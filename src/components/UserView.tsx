@@ -116,8 +116,8 @@ export default function UserView() {
             onClick={handleLogoClick}
           >
           {settings?.appLogo ? (
-            <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center bg-white shrink-0 pointer-events-none">
-              <img src={settings.appLogo} alt="Logo" className="w-full h-full object-contain p-1" />
+            <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0 pointer-events-none bg-white">
+              <img src={settings.appLogo} alt="Logo" className="w-full h-full object-cover" />
             </div>
           ) : (
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white pointer-events-none">
@@ -167,7 +167,7 @@ export default function UserView() {
               >
                 <div className="w-10 h-10 bg-zinc-800 rounded-full overflow-hidden flex-shrink-0 text-center flex items-center justify-center text-xs text-zinc-400 border border-zinc-700/50">
                   {channel.logo ? (
-                    <img src={channel.logo} alt={channel.name} className="w-full h-full object-contain p-1 bg-white" />
+                    <img src={channel.logo} alt={channel.name} className="w-full h-full object-cover bg-white" />
                   ) : (
                     channel.name.substring(0, 4).toUpperCase()
                   )}
@@ -207,7 +207,7 @@ export default function UserView() {
                     <div className="flex items-center gap-4">
                       {activeChannel.logo && (
                          <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center overflow-hidden border border-zinc-700/50 shrink-0">
-                            <img src={activeChannel.logo} className="w-full h-full object-contain p-1 bg-white" />
+                            <img src={activeChannel.logo} className="w-full h-full object-cover bg-white" />
                          </div>
                       )}
                       <div>

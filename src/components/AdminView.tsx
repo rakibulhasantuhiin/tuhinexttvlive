@@ -366,7 +366,7 @@ export default function AdminView() {
                   <div className={`flex items-center gap-3 md:hidden ${editingId === channel.id ? 'opacity-50' : ''}`}>
                     <div className="w-12 h-12 bg-zinc-800 rounded-lg flex items-center justify-center overflow-hidden shrink-0 border border-zinc-700">
                       {channel.logo ? (
-                        <img src={channel.logo} alt="" className="w-full h-full object-contain p-1.5 bg-white" />
+                        <img src={channel.logo} alt="" className="w-full h-full object-cover bg-white" />
                       ) : (
                         <div className="text-[10px] text-zinc-500 font-bold">NO LOGO</div>
                       )}
@@ -429,7 +429,7 @@ export default function AdminView() {
                   <div className="hidden md:flex items-center justify-center">
                     <div className="w-14 h-14 bg-zinc-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0 border border-zinc-700 shadow-sm">
                       {channel.logo ? (
-                        <img src={channel.logo} alt="" className="w-full h-full object-contain p-1.5 bg-white" />
+                        <img src={channel.logo} alt="" className="w-full h-full object-cover bg-white" />
                       ) : (
                         <div className="text-[10px] text-zinc-500 font-bold">NO LOGO</div>
                       )}
