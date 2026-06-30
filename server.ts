@@ -13,11 +13,17 @@ const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
 let db: admin.firestore.Firestore | null = null;
 if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
   try {
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+      privateKey = privateKey.slice(1, -1);
+    }
+    privateKey = privateKey.replace(/\\n/g, '\n');
+
     admin.initializeApp({
       credential: admin.credential.cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        privateKey: privateKey,
       })
     });
     db = admin.firestore();
@@ -25,6 +31,14 @@ if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && proc
   } catch (err) {
     console.error("Firebase initialization error:", err);
   }
+} else {
+  console.warn("===================================================================");
+  console.warn("WARNING: FIREBASE CREDENTIALS MISSING IN ENVIRONMENT VARIABLES!");
+  console.warn("Changes made in the admin panel will NOT be saved permanently.");
+  console.warn("They will be lost every time the server restarts or redeploys.");
+  console.warn("Please add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and");
+  console.warn("FIREBASE_PRIVATE_KEY to your deployment environment.");
+  console.warn("===================================================================");
 }
 
 interface Channel {
