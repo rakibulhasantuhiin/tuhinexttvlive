@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreamBox - Admin & Live TV</title>
+    <script>
+      // Prevent "Cannot set property fetch" TypeError caused by whatwg-fetch in some players
+      try {
+        const originalFetch = window.fetch;
+        Object.defineProperty(window, 'fetch', {
+          get: function() { return originalFetch; },
+          set: function() { console.warn("Prevented polyfill from overwriting fetch"); },
+          configurable: true
+        });
+      } catch (e) {
+        console.error("Could not patch fetch:", e);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
