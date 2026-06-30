@@ -4,7 +4,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
 
 const DB_FILE = path.join(process.cwd(), 'channels.json');
 const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
@@ -42,7 +42,7 @@ interface AppSettings {
 }
 
 let settings: AppSettings = {
-  appName: "StreamBox",
+  appName: "TUHINEXT TV",
   appLogo: ""
 };
 
@@ -131,11 +131,36 @@ async function startServer() {
 
   app.use(express.json());
 
+  const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || '753690';
+  const ADMIN_TOKEN = uuidv4();
+
+  const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.split(' ')[1] === ADMIN_TOKEN) {
+      next();
+    } else {
+      res.status(401).json({ error: 'Unauthorized' });
+    }
+  };
+
+  app.post('/api/admin/login', (req, res) => {
+    const { passcode } = req.body;
+    if (passcode === ADMIN_PASSCODE) {
+      res.json({ token: ADMIN_TOKEN });
+    } else {
+      res.status(401).json({ error: 'Invalid passcode' });
+    }
+  });
+
+  app.get('/api/admin/verify', requireAdmin, (req, res) => {
+    res.json({ valid: true });
+  });
+
   app.get('/api/settings', (req, res) => {
     res.json(settings);
   });
 
-  app.post('/api/settings', async (req, res) => {
+  app.post('/api/settings', requireAdmin, async (req, res) => {
     const { appName, appLogo } = req.body;
     const newSettings = { ...settings };
     if (appName !== undefined) newSettings.appName = appName;
@@ -149,7 +174,7 @@ async function startServer() {
     res.json(sorted);
   });
 
-  app.post('/api/channels', async (req, res) => {
+  app.post('/api/channels', requireAdmin, async (req, res) => {
     const { name, logo, url } = req.body;
     if (!name || !url) return res.status(400).json({ error: 'Name and URL are required' });
     
@@ -166,7 +191,7 @@ async function startServer() {
     res.status(201).json(newChannel);
   });
 
-  app.put('/api/channels/:id', async (req, res) => {
+  app.put('/api/channels/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     const channel = channels.find(c => c.id === id);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
@@ -176,14 +201,14 @@ async function startServer() {
     res.json(updatedChannel);
   });
 
-  app.delete('/api/channels/:id', async (req, res) => {
+  app.delete('/api/channels/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     if (!channels.find(c => c.id === id)) return res.status(404).json({ error: 'Channel not found' });
     await deleteChannelFromDB(id);
     res.status(204).send();
   });
 
-  app.post('/api/channels/reorder', async (req, res) => {
+  app.post('/api/channels/reorder', requireAdmin, async (req, res) => {
     const { id, direction } = req.body;
     const index = channels.findIndex(c => c.id === id);
     if (index === -1) return res.status(404).json({ error: 'Channel not found' });

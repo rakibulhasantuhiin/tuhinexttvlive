@@ -104,10 +104,10 @@ export default function UserView() {
             </div>
           ) : (
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white">
-              {settings?.appName ? settings.appName.charAt(0).toUpperCase() : 'S'}
+              {settings?.appName ? settings.appName.charAt(0).toUpperCase() : 'T'}
             </div>
           )}
-          <h1 className="text-xl font-bold tracking-tight text-white">{settings?.appName || "StreamBox"}</h1>
+          <h1 className="text-xl font-bold tracking-tight text-white">{settings?.appName || "TUHINEXT TV"}</h1>
           </div>
         </div>
         <div className="hidden md:flex flex-1 justify-end">

@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Eye, EyeOff, GripVertical, Save, Edit2, Check, X, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Eye, EyeOff, GripVertical, Save, Edit2, Check, X, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Lock } from 'lucide-react';
 import { Channel, AppSettings } from '../types';
 
 export default function AdminView() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passcode, setPasscode] = useState('');
+  const [loginError, setLoginError] = useState('');
+
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -16,6 +20,11 @@ export default function AdminView() {
   const [name, setName] = useState('');
   const [logo, setLogo] = useState('');
   const [url, setUrl] = useState('');
+
+  const getHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+  });
 
   const fetchChannels = () => {
     fetch('/api/channels')
@@ -32,19 +41,47 @@ export default function AdminView() {
   };
 
   useEffect(() => {
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+      fetch('/api/admin/verify', { headers: getHeaders() })
+        .then(res => {
+          if (res.ok) setIsAuthenticated(true);
+          else localStorage.removeItem('adminToken');
+        });
+    }
     fetchChannels();
     fetchSettings();
   }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('adminToken', data.token);
+        setIsAuthenticated(true);
+      } else {
+        setLoginError('Invalid passcode');
+      }
+    } catch (err) {
+      setLoginError('Login failed');
+    }
+  };
 
   const handleSaveSettings = async () => {
     setIsSavingSettings(true);
     try {
       await fetch('/api/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify(settings)
       });
-      // Optionally show a success toast here
     } catch (err) {
       console.error("Error saving settings:", err);
     } finally {
@@ -59,7 +96,7 @@ export default function AdminView() {
     try {
       await fetch('/api/channels', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ name, logo, url })
       });
       setIsAdding(false);
@@ -76,7 +113,7 @@ export default function AdminView() {
     try {
       await fetch(`/api/channels/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify(updates)
       });
       fetchChannels();
@@ -88,7 +125,10 @@ export default function AdminView() {
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this channel?')) return;
     try {
-      await fetch(`/api/channels/${id}`, { method: 'DELETE' });
+      await fetch(`/api/channels/${id}`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` }
+      });
       fetchChannels();
     } catch (err) {
       console.error("Error deleting channel:", err);
@@ -99,7 +139,7 @@ export default function AdminView() {
     try {
       await fetch('/api/channels/reorder', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ id, direction })
       });
       fetchChannels();
@@ -130,6 +170,48 @@ export default function AdminView() {
     setLogo('');
     setUrl('');
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4">
+        <div className="absolute top-6 left-6">
+          <Link to="/" className="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+        </div>
+        <div className="max-w-sm w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-8 shadow-2xl backdrop-blur-sm">
+          <div className="flex justify-center mb-6">
+            <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 rounded-full flex items-center justify-center">
+              <Lock className="w-8 h-8 text-indigo-400" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-white text-center mb-2 tracking-tight">Admin Access</h2>
+          <p className="text-zinc-500 text-sm text-center mb-8">Please enter your passcode to continue</p>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <input
+                type="password"
+                value={passcode}
+                onChange={e => setPasscode(e.target.value)}
+                placeholder="Enter passcode"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-100 text-center tracking-widest text-lg focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all placeholder:tracking-normal placeholder:text-zinc-600"
+                autoFocus
+              />
+            </div>
+            {loginError && <p className="text-red-400 text-sm text-center font-medium animate-pulse">{loginError}</p>}
+            <button 
+              type="submit" 
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+              disabled={!passcode}
+            >
+              Unlock Dashboard
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -164,7 +246,7 @@ export default function AdminView() {
                 value={settings.appName}
                 onChange={(e) => setSettings({ ...settings, appName: e.target.value })}
                 className="w-full bg-zinc-800 border-none rounded-md px-3 py-2 text-sm text-zinc-100 focus:ring-1 focus:ring-indigo-500 outline-none"
-                placeholder="e.g. StreamBox"
+                placeholder="e.g. TUHINEXT TV"
               />
             </div>
             <div className="space-y-1">

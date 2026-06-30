@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
 import dashjs from 'dashjs';
-import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, Lock, Unlock } from 'lucide-react';
 
 interface StreamPlayerProps {
   url: string;
@@ -16,7 +16,9 @@ export default function StreamPlayer({ url }: StreamPlayerProps) {
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleMouseMove = useCallback(() => {
+  const [isLocked, setIsLocked] = useState(false);
+
+  const handleInteraction = useCallback(() => {
     setShowControls(true);
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
@@ -25,13 +27,22 @@ export default function StreamPlayer({ url }: StreamPlayerProps) {
       if (isPlaying) {
         setShowControls(false);
       }
-    }, 2500);
+    }, 2000);
   }, [isPlaying]);
+
+  const handleMouseMove = useCallback(() => {
+    handleInteraction();
+  }, [handleInteraction]);
 
   const handleMouseLeave = () => {
     if (isPlaying) {
       setShowControls(false);
     }
+  };
+
+  const handleContainerClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    handleInteraction();
   };
 
   useEffect(() => {
@@ -62,13 +73,33 @@ export default function StreamPlayer({ url }: StreamPlayerProps) {
     }
   };
 
-  const toggleFullscreen = (e?: React.MouseEvent) => {
+  const toggleFullscreen = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch(console.error);
+      try {
+        await containerRef.current?.requestFullscreen();
+        if (screen.orientation && screen.orientation.lock) {
+          await screen.orientation.lock('landscape');
+        }
+      } catch (err) {
+        console.error(err);
+      }
     } else {
-      document.exitFullscreen().catch(console.error);
+      try {
+        if (screen.orientation && screen.orientation.unlock) {
+          screen.orientation.unlock();
+        }
+        await document.exitFullscreen();
+      } catch (err) {
+        console.error(err);
+      }
     }
+  };
+
+  const toggleLock = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsLocked(!isLocked);
+    handleInteraction();
   };
 
   useEffect(() => {
@@ -91,10 +122,19 @@ export default function StreamPlayer({ url }: StreamPlayerProps) {
         }
         if (isMounted) setIsPlaying(true);
       } catch (err: any) {
-        if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+        if (err.name === 'NotAllowedError') {
+          // Retry with muted if autoplay is blocked
+          video.muted = true;
+          if (isMounted) setIsMuted(true);
+          try {
+            await video.play();
+            if (isMounted) setIsPlaying(true);
+          } catch (e) {
+            console.warn("Auto-play muted failed:", e);
+          }
+        } else if (err.name !== 'AbortError') {
           console.warn("Auto-play failed:", err.message);
         }
-        // Playback failed (usually due to autoplay policies), wait for user interaction
       }
     };
 
@@ -194,7 +234,7 @@ export default function StreamPlayer({ url }: StreamPlayerProps) {
       className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden group"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      onClick={togglePlay}
+      onClick={handleContainerClick}
     >
       {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-white z-10 px-4 text-center">
@@ -213,29 +253,53 @@ export default function StreamPlayer({ url }: StreamPlayerProps) {
       {/* Custom Controls Overlay */}
       {!error && (
         <div 
-          className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex items-center gap-4 transition-opacity duration-300 z-20 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex items-center gap-4 transition-opacity duration-300 z-30 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'}`}
           onClick={(e) => e.stopPropagation()}
         >
-          <button onClick={togglePlay} className="text-white hover:text-indigo-400 transition-colors">
-            {isPlaying ? <Pause className="w-6 h-6" fill="currentColor" /> : <Play className="w-6 h-6" fill="currentColor" />}
-          </button>
-          
-          <button onClick={toggleMute} className="text-white hover:text-indigo-400 transition-colors">
-            {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
-          </button>
-          
-          <div className="flex-1" />
-          
-          <button onClick={toggleFullscreen} className="text-white hover:text-indigo-400 transition-colors">
-            <Maximize className="w-6 h-6" />
-          </button>
+          {isLocked ? (
+            <>
+              <div className="flex-1" />
+              <button onClick={toggleLock} className="text-white hover:text-indigo-400 transition-colors bg-black/50 p-2 rounded-full backdrop-blur-sm">
+                <Unlock className="w-6 h-6" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={togglePlay} className="text-white hover:text-indigo-400 transition-colors">
+                {isPlaying ? <Pause className="w-6 h-6" fill="currentColor" /> : <Play className="w-6 h-6" fill="currentColor" />}
+              </button>
+              
+              <button onClick={toggleMute} className="text-white hover:text-indigo-400 transition-colors">
+                {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
+              </button>
+              
+              <div className="flex-1" />
+              
+              <button onClick={toggleLock} className="text-white hover:text-indigo-400 transition-colors mr-2">
+                <Lock className="w-6 h-6" />
+              </button>
+              
+              <button onClick={toggleFullscreen} className="text-white hover:text-indigo-400 transition-colors">
+                <Maximize className="w-6 h-6" />
+              </button>
+            </>
+          )}
         </div>
+      )}
+
+      {/* Lock Overlay Shield - blocks all interactions except the controls above */}
+      {isLocked && (
+        <div 
+          className="absolute inset-0 z-20 cursor-default"
+          onClick={handleContainerClick}
+        />
       )}
 
       <video
         ref={videoRef}
         playsInline
         autoPlay
+        muted={isMuted}
         className="w-full h-full object-contain outline-none will-change-transform transform-gpu"
         style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden', perspective: 1000 }}
       />

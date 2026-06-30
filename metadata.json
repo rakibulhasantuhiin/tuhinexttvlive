@@ -1,5 +1,5 @@
 {
-  "name": "StreamBox",
+  "name": "TUHINEXT TV",
   "description": "A live streaming platform supporting m3u8, ts, dash, and mpd with an admin panel.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
