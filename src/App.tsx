@@ -9,7 +9,7 @@ import AdminView from './components/AdminView';
 
 export default function App() {
   return (
-    <div className="h-screen bg-zinc-950 text-zinc-100 font-sans overflow-hidden flex flex-col">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans flex flex-col">
       <Routes>
         <Route path="/" element={<UserView />} />
         <Route path="/admin" element={<AdminView />} />

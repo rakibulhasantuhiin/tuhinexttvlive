@@ -8,10 +8,17 @@ export default function UserView() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [clickCount, setClickCount] = useState(0);
   const [liveViewers, setLiveViewers] = useState(0);
+  const [clickCount, setClickCount] = useState(0);
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (clickCount >= 5) {
+      navigate('/admin');
+      setClickCount(0);
+    }
+  }, [clickCount, navigate]);
 
   const handleLogoClick = () => {
     setClickCount(prev => prev + 1);
@@ -20,15 +27,8 @@ export default function UserView() {
     }
     clickTimeoutRef.current = setTimeout(() => {
       setClickCount(0);
-    }, 2000); // Reset clicks after 2 seconds of inactivity
+    }, 2000);
   };
-
-  useEffect(() => {
-    if (clickCount >= 5) {
-      navigate('/admin');
-      setClickCount(0);
-    }
-  }, [clickCount, navigate]);
 
   useEffect(() => {
     const sse = new EventSource('/api/live-viewers');
@@ -71,14 +71,31 @@ export default function UserView() {
   const fetchSettings = () => {
     fetch('/api/settings')
       .then(res => res.json())
-      .then(data => setSettings(data))
+      .then(data => {
+        setSettings(data);
+        if (data.appName) {
+          document.title = data.appName;
+        }
+        if (data.appLogo) {
+          let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+          if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+          }
+          link.href = data.appLogo;
+        }
+      })
       .catch(err => console.error("Failed to load settings", err));
   };
 
   useEffect(() => {
     fetchChannels();
     fetchSettings();
-    const interval = setInterval(fetchChannels, 5000);
+    const interval = setInterval(() => {
+      fetchChannels();
+      fetchSettings();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -91,33 +108,33 @@ export default function UserView() {
   return (
     <div className="flex flex-col h-screen overflow-hidden will-change-transform transform-gpu antialiased bg-zinc-950">
       {/* Header */}
-      <header className="h-16 border-b border-zinc-800 flex items-center justify-between px-4 md:px-6 bg-zinc-900/50 relative">
+      <header className="py-3 md:h-16 border-b border-zinc-800 flex flex-col md:flex-row items-center justify-between px-4 md:px-6 bg-zinc-900/50 gap-2 md:gap-0">
         <div className="flex-1 hidden md:block"></div>
-        <div className="absolute left-1/2 -translate-x-1/2 md:static md:translate-x-0 md:flex-1 flex justify-center">
+        <div className="flex justify-center md:flex-1">
           <div 
-            className="flex items-center justify-center gap-3 cursor-pointer select-none"
+            className="flex items-center justify-center gap-3 select-none cursor-pointer p-2 rounded-lg hover:bg-zinc-800/50 transition-colors"
             onClick={handleLogoClick}
           >
           {settings?.appLogo ? (
-            <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center bg-white shrink-0">
-              <img src={settings.appLogo} alt="Logo" className="w-full h-full object-cover" />
+            <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center bg-white shrink-0 pointer-events-none">
+              <img src={settings.appLogo} alt="Logo" className="w-full h-full object-contain p-1" />
             </div>
           ) : (
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white">
+            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white pointer-events-none">
               {settings?.appName ? settings.appName.charAt(0).toUpperCase() : 'T'}
             </div>
           )}
-          <h1 className="text-xl font-bold tracking-tight text-white">{settings?.appName || "TUHINEXT TV"}</h1>
+          <h1 className="text-xl font-bold tracking-tight text-white pointer-events-none">{settings?.appName || "TUHINEXT TV"}</h1>
           </div>
         </div>
         <div className="hidden md:flex flex-1 justify-end">
-          <div className="flex items-center gap-1.5 md:gap-2 px-2.5 py-1 md:px-3 md:py-1.5 rounded-full bg-zinc-900/40 border border-zinc-700/50 backdrop-blur-md shadow-lg cursor-default select-none pointer-events-none" title="Live Viewers">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900/40 border border-zinc-700/50 backdrop-blur-md shadow-lg cursor-default select-none pointer-events-none" title="Live Viewers">
             <div className="relative flex items-center justify-center">
-              <span className="absolute w-2 h-2 md:w-2.5 md:h-2.5 bg-red-500 rounded-full animate-ping opacity-75"></span>
-              <span className="relative w-1.5 h-1.5 md:w-2 md:h-2 bg-red-500 rounded-full"></span>
+              <span className="absolute w-2.5 h-2.5 bg-red-500 rounded-full animate-ping opacity-75"></span>
+              <span className="relative w-2 h-2 bg-red-500 rounded-full"></span>
             </div>
-            <Users className="w-3.5 h-3.5 md:w-4 md:h-4 text-zinc-400" />
-            <span className="text-[10px] md:text-xs font-bold text-zinc-200 tracking-wide">{formatViewers(liveViewers)}</span>
+            <Users className="w-4 h-4 text-zinc-400" />
+            <span className="text-xs font-bold text-zinc-200 tracking-wide">{formatViewers(liveViewers)}</span>
           </div>
         </div>
       </header>
@@ -150,7 +167,7 @@ export default function UserView() {
               >
                 <div className="w-10 h-10 bg-zinc-800 rounded-full overflow-hidden flex-shrink-0 text-center flex items-center justify-center text-xs text-zinc-400 border border-zinc-700/50">
                   {channel.logo ? (
-                    <img src={channel.logo} alt={channel.name} className="w-full h-full object-cover bg-white" />
+                    <img src={channel.logo} alt={channel.name} className="w-full h-full object-contain p-1 bg-white" />
                   ) : (
                     channel.name.substring(0, 4).toUpperCase()
                   )}
@@ -190,7 +207,7 @@ export default function UserView() {
                     <div className="flex items-center gap-4">
                       {activeChannel.logo && (
                          <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center overflow-hidden border border-zinc-700/50 shrink-0">
-                            <img src={activeChannel.logo} className="w-full h-full object-cover bg-white" />
+                            <img src={activeChannel.logo} className="w-full h-full object-contain p-1 bg-white" />
                          </div>
                       )}
                       <div>

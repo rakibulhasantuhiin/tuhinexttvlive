@@ -69,21 +69,23 @@ try {
 async function syncFromFirebase() {
   if (!db) return;
   try {
-    const settingsDoc = await db.collection('config').doc('settings').get();
-    if (settingsDoc.exists) {
-      settings = settingsDoc.data() as AppSettings;
-    } else {
-      await db.collection('config').doc('settings').set(settings);
-    }
-
-    const channelsSnapshot = await db.collection('channels').get();
-    if (!channelsSnapshot.empty) {
-      channels = channelsSnapshot.docs.map(doc => doc.data() as Channel);
-    } else {
-      for (const channel of channels) {
-        await db.collection('channels').doc(channel.id).set(channel);
+    db.collection('config').doc('settings').onSnapshot(doc => {
+      if (doc.exists) {
+        settings = doc.data() as AppSettings;
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
       }
-    }
+    });
+
+    db.collection('channels').onSnapshot(snapshot => {
+      let newChannels: Channel[] = [];
+      snapshot.forEach(doc => {
+        newChannels.push(doc.data() as Channel);
+      });
+      if (newChannels.length > 0 || snapshot.docChanges().length > 0) {
+        channels = newChannels.sort((a, b) => a.order - b.order);
+        fs.writeFileSync(DB_FILE, JSON.stringify(channels, null, 2));
+      }
+    });
   } catch (err) {
     console.error("Error syncing from Firebase:", err);
   }

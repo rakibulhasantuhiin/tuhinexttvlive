@@ -23,7 +23,7 @@ export default function AdminView() {
 
   const getHeaders = () => ({
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+    'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}`
   });
 
   const fetchChannels = () => {
@@ -36,17 +36,31 @@ export default function AdminView() {
   const fetchSettings = () => {
     fetch('/api/settings')
       .then(res => res.json())
-      .then(data => setSettings(data))
+      .then(data => {
+        setSettings(data);
+        if (data.appName) {
+          document.title = data.appName;
+        }
+        if (data.appLogo) {
+          let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+          if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+          }
+          link.href = data.appLogo;
+        }
+      })
       .catch(err => console.error("Error fetching settings:", err));
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('adminToken');
+    const token = sessionStorage.getItem('adminToken');
     if (token) {
       fetch('/api/admin/verify', { headers: getHeaders() })
         .then(res => {
           if (res.ok) setIsAuthenticated(true);
-          else localStorage.removeItem('adminToken');
+          else sessionStorage.removeItem('adminToken');
         });
     }
     fetchChannels();
@@ -64,7 +78,7 @@ export default function AdminView() {
       });
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem('adminToken', data.token);
+        sessionStorage.setItem('adminToken', data.token);
         setIsAuthenticated(true);
       } else {
         setLoginError('Invalid passcode');
@@ -127,7 +141,7 @@ export default function AdminView() {
     try {
       await fetch(`/api/channels/${id}`, { 
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` }
+        headers: { 'Authorization': `Bearer ${sessionStorage.getItem('adminToken')}` }
       });
       fetchChannels();
     } catch (err) {
@@ -218,17 +232,22 @@ export default function AdminView() {
       <header className="h-16 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-900/50 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto w-full flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link to="/" className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex items-center justify-center transition-colors text-zinc-400 hover:text-white">
+            <Link 
+              to="/" 
+              onClick={() => sessionStorage.removeItem('adminToken')}
+              className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex items-center justify-center transition-colors text-zinc-400 hover:text-white"
+            >
               <ArrowLeft className="w-4 h-4" />
             </Link>
-            <h1 className="text-xl font-bold tracking-tight">Stream<span className="text-indigo-400">Admin</span></h1>
+            <h1 className="text-xl font-bold tracking-tight truncate">Stream<span className="text-indigo-400">Admin</span></h1>
           </div>
           <button
             onClick={() => setIsAdding(!isAdding)}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-full font-bold transition-colors flex items-center gap-2 shadow-lg shadow-indigo-500/20"
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-2 md:px-4 rounded-full md:rounded-md font-bold transition-colors flex items-center gap-1.5 shadow-lg shadow-indigo-500/20 shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            <span>Add New Channel</span>
+            <Plus className="w-4 h-4 md:w-3.5 md:h-3.5" />
+            <span className="hidden sm:inline">Add New Channel</span>
+            <span className="sm:hidden">Add</span>
           </button>
         </div>
       </header>
@@ -236,11 +255,21 @@ export default function AdminView() {
       <main className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 pb-24">
         
         {/* App Settings Section */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8 shadow-lg">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-500 mb-4">App Settings</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-6 mb-6 shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-500">App Settings</h2>
+            <button
+              onClick={handleSaveSettings}
+              disabled={isSavingSettings}
+              className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white text-[10px] md:text-xs px-3 py-1.5 md:px-4 md:py-2 rounded font-bold transition-colors flex items-center gap-1.5"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>{isSavingSettings ? 'Saving...' : 'Save'}</span>
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">App Name</label>
+              <label className="text-[10px] text-zinc-500 font-bold uppercase block">App Name</label>
               <input
                 type="text"
                 value={settings.appName}
@@ -250,7 +279,7 @@ export default function AdminView() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 font-bold uppercase mb-1 block">App Logo URL</label>
+              <label className="text-[10px] text-zinc-500 font-bold uppercase block">App Logo URL</label>
               <input
                 type="url"
                 value={settings.appLogo}
@@ -260,14 +289,6 @@ export default function AdminView() {
               />
             </div>
           </div>
-          <button
-            onClick={handleSaveSettings}
-            disabled={isSavingSettings}
-            className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white text-xs px-4 py-2 rounded-md font-bold transition-colors flex items-center gap-2"
-          >
-            <Save className="w-4 h-4" />
-            <span>{isSavingSettings ? 'Saving...' : 'Save Settings'}</span>
-          </button>
         </div>
 
         {isAdding && (
@@ -345,7 +366,7 @@ export default function AdminView() {
                   <div className={`flex items-center gap-3 md:hidden ${editingId === channel.id ? 'opacity-50' : ''}`}>
                     <div className="w-12 h-12 bg-zinc-800 rounded-lg flex items-center justify-center overflow-hidden shrink-0 border border-zinc-700">
                       {channel.logo ? (
-                        <img src={channel.logo} alt="" className="w-full h-full object-cover bg-white" />
+                        <img src={channel.logo} alt="" className="w-full h-full object-contain p-1.5 bg-white" />
                       ) : (
                         <div className="text-[10px] text-zinc-500 font-bold">NO LOGO</div>
                       )}
@@ -408,7 +429,7 @@ export default function AdminView() {
                   <div className="hidden md:flex items-center justify-center">
                     <div className="w-14 h-14 bg-zinc-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0 border border-zinc-700 shadow-sm">
                       {channel.logo ? (
-                        <img src={channel.logo} alt="" className="w-full h-full object-cover bg-white" />
+                        <img src={channel.logo} alt="" className="w-full h-full object-contain p-1.5 bg-white" />
                       ) : (
                         <div className="text-[10px] text-zinc-500 font-bold">NO LOGO</div>
                       )}
@@ -418,26 +439,26 @@ export default function AdminView() {
                   {/* Name and URL (or Edit Form) */}
                   <div className="flex-1 min-w-0">
                     {editingId === channel.id ? (
-                      <div className="space-y-3 py-2 mt-2 md:mt-0">
+                      <div className="space-y-3 py-2 mt-2 md:mt-0 flex flex-col w-full">
                         <input
                           type="text"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-shadow"
                           placeholder="Channel Name"
                         />
                         <input
                           type="text"
                           value={logo}
                           onChange={(e) => setLogo(e.target.value)}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-400 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-400 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-shadow"
                           placeholder="Logo URL"
                         />
                         <input
                           type="text"
                           value={url}
                           onChange={(e) => setUrl(e.target.value)}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-400 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-400 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-shadow"
                           placeholder="Stream URL (m3u8, etc)"
                         />
                       </div>
