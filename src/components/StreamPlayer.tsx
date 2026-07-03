@@ -138,24 +138,29 @@ export default function StreamPlayer({ url }: StreamPlayerProps) {
       }
     };
 
-    if (url.includes('.m3u8') || url.includes('.ts')) {
+    if (url.includes('.mpd')) {
+      dash = dashjs.MediaPlayer().create();
+      dash.updateSettings({
+        debug: { logLevel: dashjs.Debug.LOG_LEVEL_NONE },
+        streaming: {
+          buffer: {
+            fastSwitchEnabled: true,
+            bufferTimeAtTopQuality: 30, // Increase buffer time for 4K/8K
+            bufferToKeep: 30
+          },
+          abr: {
+            limitBitrateByPortal: false // Allow 4K even if player is small
+          }
+        }
+      });
+      dash.initialize(video, url, true);
+      dash.on(dashjs.MediaPlayer.events.ERROR, (e: any) => {
+        console.error("DASH Error:", e);
+        if (e.error === 'download' && isMounted) setError(true);
+      });
+    } else {
       if (Hls.isSupported()) {
-        hls = new Hls({
-          debug: false,
-          enableWorker: true,
-          lowLatencyMode: false,
-          manifestLoadingTimeOut: 10000,
-          manifestLoadingMaxRetry: 3,
-          levelLoadingTimeOut: 10000,
-          levelLoadingMaxRetry: 3,
-          fragLoadingTimeOut: 10000,
-          fragLoadingMaxRetry: 3,
-          startLevel: -1, // Auto level for fast start
-          capLevelToPlayerSize: false, // Allow 4K/8K even if player is smaller
-          maxBufferLength: 60, // Buffer 60s for smooth playback
-          maxMaxBufferLength: 600,
-          maxBufferSize: 200 * 1000 * 1000, // 200MB buffer for high-bitrate 4K/8K
-        });
+        hls = new Hls();
         hls.loadSource(url);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, playVideo);
@@ -184,33 +189,11 @@ export default function StreamPlayer({ url }: StreamPlayerProps) {
         video.addEventListener('loadedmetadata', playVideo);
         video.addEventListener('error', () => isMounted && setError(true));
       } else {
-        if (isMounted) setError(true);
+        // Fallback for direct MP4 or other native formats
+        video.src = url;
+        video.addEventListener('loadedmetadata', playVideo);
+        video.addEventListener('error', () => isMounted && setError(true));
       }
-    } else if (url.includes('.mpd')) {
-      dash = dashjs.MediaPlayer().create();
-      dash.updateSettings({
-        debug: { logLevel: dashjs.Debug.LOG_LEVEL_NONE },
-        streaming: {
-          buffer: {
-            fastSwitchEnabled: true,
-            bufferTimeAtTopQuality: 30, // Increase buffer time for 4K/8K
-            bufferToKeep: 30
-          },
-          abr: {
-            limitBitrateByPortal: false // Allow 4K even if player is small
-          }
-        }
-      });
-      dash.initialize(video, url, true);
-      dash.on(dashjs.MediaPlayer.events.ERROR, (e: any) => {
-        console.error("DASH Error:", e);
-        if (e.error === 'download' && isMounted) setError(true);
-      });
-    } else {
-      // Fallback for direct MP4 or other native formats
-      video.src = url;
-      video.addEventListener('loadedmetadata', playVideo);
-      video.addEventListener('error', () => isMounted && setError(true));
     }
 
     return () => {
