@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PlayCircle, Users } from 'lucide-react';
 import { Channel, AppSettings } from '../types';
 import StreamPlayer from './StreamPlayer';
+import { io } from 'socket.io-client';
 
 export default function UserView() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -45,7 +46,17 @@ export default function UserView() {
 
   const fetchChannels = () => {
     fetch('/api/channels')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error("Network response was not ok");
+        return res.text();
+      })
+      .then(text => {
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          throw new Error("Failed to parse JSON");
+        }
+      })
       .then(data => {
         const visibleChannels = data.filter((c: Channel) => !c.isHidden);
         setChannels(prev => {
@@ -55,7 +66,10 @@ export default function UserView() {
           return prev;
         });
       })
-      .catch(err => console.error("Failed to load channels", err));
+      .catch(err => {
+        // Silently ignore during dev server restarts or just console log
+        console.debug("Fetch channels error:", err.message);
+      });
   };
 
   const formatViewers = (count: number) => {
@@ -70,7 +84,17 @@ export default function UserView() {
 
   const fetchSettings = () => {
     fetch('/api/settings')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error("Network response was not ok");
+        return res.text();
+      })
+      .then(text => {
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          throw new Error("Failed to parse JSON");
+        }
+      })
       .then(data => {
         setSettings(data);
         if (data.appName) {
@@ -86,17 +110,45 @@ export default function UserView() {
           link.href = data.appLogo;
         }
       })
-      .catch(err => console.error("Failed to load settings", err));
+      .catch(err => {
+        console.debug("Fetch settings error:", err.message);
+      });
   };
 
   useEffect(() => {
     fetchChannels();
     fetchSettings();
-    const interval = setInterval(() => {
-      fetchChannels();
-      fetchSettings();
-    }, 5000);
-    return () => clearInterval(interval);
+    
+    const socket = io();
+
+    socket.on('channels_updated', (data) => {
+      const visibleChannels = data.filter(c => !c.isHidden);
+      setChannels(visibleChannels);
+    });
+
+    socket.on('force_play_channel', (channel) => {
+      if (!channel.isHidden) {
+        setActiveChannel(channel);
+      }
+    });
+
+    socket.on('settings_updated', (data) => {
+      setSettings(data);
+      if (data.appName) document.title = data.appName;
+      if (data.appLogo) {
+        let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.head.appendChild(link);
+        }
+        link.href = data.appLogo;
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   useEffect(() => {
@@ -199,7 +251,7 @@ export default function UserView() {
             {activeChannel ? (
               <>
                 <div className="w-full h-full relative z-0">
-                  <StreamPlayer url={activeChannel.url} />
+                  <StreamPlayer key={activeChannel.url} url={activeChannel.url} />
                 </div>
                 {/* Overlay Info (shown briefly or on hover - we can just keep it visible but pointer-events-none so it doesn't block controls, or let player controls handle it. We will position it at top so it doesn't block bottom controls) */}
                 <div className="absolute top-0 inset-x-0 bg-gradient-to-b from-black/80 to-transparent flex items-start p-4 md:p-6 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">

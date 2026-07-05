@@ -1,16 +1,20 @@
+import http from "http";
+import { Server } from "socket.io";
 import 'dotenv/config';
 import express from 'express';
+import { Readable } from 'stream';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
-import admin from 'firebase-admin';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore, Firestore } from 'firebase-admin/firestore';
 
 const DB_FILE = path.join(process.cwd(), 'channels.json');
 const SETTINGS_FILE = path.join(process.cwd(), 'settings.json');
 
 // Initialize Firebase Admin if credentials exist
-let db: admin.firestore.Firestore | null = null;
+let db: Firestore | null = null;
 if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
   try {
     let privateKey = process.env.FIREBASE_PRIVATE_KEY;
@@ -19,14 +23,14 @@ if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && proc
     }
     privateKey = privateKey.replace(/\\n/g, '\n');
 
-    admin.initializeApp({
-      credential: admin.credential.cert({
+    initializeApp({
+      credential: cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
         privateKey: privateKey,
       })
     });
-    db = admin.firestore();
+    db = getFirestore();
     console.log("Firebase initialized successfully");
   } catch (err) {
     console.error("Firebase initialization error:", err);
@@ -185,6 +189,60 @@ async function startServer() {
     res.json(settings);
   });
 
+  
+  app.all('/api/proxy', async (req, res) => {
+    const targetUrl = req.query.url as string;
+    if (!targetUrl) return res.status(400).send('Missing url');
+
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', '*');
+      return res.status(200).end();
+    }
+
+    try {
+      const fetchRes = await fetch(targetUrl, {
+        method: req.method === 'OPTIONS' ? 'GET' : req.method,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': '*/*'
+        }
+      });
+
+      const contentType = fetchRes.headers.get('content-type');
+      if (contentType) res.setHeader('Content-Type', contentType);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.status(fetchRes.status);
+
+      if (targetUrl.includes('.m3u8') || (contentType && contentType.includes('mpegurl'))) {
+        const text = await fetchRes.text();
+        const baseUrl = new URL(targetUrl);
+        const lines = text.split('\n');
+        const rewritten = lines.map(line => {
+          if (line.trim().startsWith('#') || line.trim() === '') return line;
+          let absUrl = line.trim();
+          if (!absUrl.startsWith('http')) {
+            absUrl = new URL(absUrl, baseUrl).toString();
+          }
+          return `/api/proxy?url=${encodeURIComponent(absUrl)}`;
+        });
+        res.send(rewritten.join('\n'));
+      } else {
+        if (req.method === 'HEAD' || !fetchRes.body) {
+           return res.end();
+        }
+        const arrayBuffer = await fetchRes.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        res.setHeader('Content-Length', buffer.length.toString());
+        res.send(buffer);
+      }
+    } catch (err) {
+      console.error("Proxy error:", err);
+      res.status(500).send('Proxy error: ' + err.message + ' - ' + err.stack);
+    }
+  });
+
   app.get('/api/channels', (req, res) => {
     const sorted = [...channels].sort((a, b) => a.order - b.order);
     res.json(sorted);
@@ -204,6 +262,11 @@ async function startServer() {
       order: maxOrder + 1,
     };
     await saveChannel(newChannel);
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("channels_updated", channels);
+      io.emit("force_play_channel", newChannel);
+    }
     res.status(201).json(newChannel);
   });
 
@@ -214,6 +277,8 @@ async function startServer() {
     
     const updatedChannel = { ...channel, ...req.body, id };
     await saveChannel(updatedChannel);
+    const io = req.app.get("io");
+    if (io) io.emit("channels_updated", channels);
     res.json(updatedChannel);
   });
 
@@ -221,6 +286,8 @@ async function startServer() {
     const { id } = req.params;
     if (!channels.find(c => c.id === id)) return res.status(404).json({ error: 'Channel not found' });
     await deleteChannelFromDB(id);
+    const io = req.app.get("io");
+    if (io) io.emit("channels_updated", channels);
     res.status(204).send();
   });
 
@@ -263,6 +330,8 @@ async function startServer() {
       } catch (e) { console.error("Firebase batch save error:", e); }
     }
     
+    const io = req.app.get("io");
+    if (io) io.emit("channels_updated", channels);
     res.json(channels);
   });
 
@@ -308,7 +377,14 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = http.createServer(app);
+  const io = new Server(server, { cors: { origin: "*" } });
+  
+  io.on("connection", (socket) => { console.log("User connected:", socket.id); });
+
+  app.set("io", io);
+
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }

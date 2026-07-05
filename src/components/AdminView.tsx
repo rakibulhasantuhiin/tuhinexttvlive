@@ -1,3 +1,4 @@
+import { io } from "socket.io-client";
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, Eye, EyeOff, GripVertical, Save, Edit2, Check, X, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Lock } from 'lucide-react';
@@ -28,14 +29,14 @@ export default function AdminView() {
 
   const fetchChannels = () => {
     fetch('/api/channels')
-      .then(res => res.json())
+      .then(res => res.text()).then(text => { try { return JSON.parse(text); } catch (e) { throw new Error("JSON parse err"); } })
       .then(data => setChannels(data))
       .catch(err => console.error("Error fetching channels:", err));
   };
 
   const fetchSettings = () => {
     fetch('/api/settings')
-      .then(res => res.json())
+      .then(res => res.text()).then(text => { try { return JSON.parse(text); } catch (e) { throw new Error("JSON parse err"); } })
       .then(data => {
         setSettings(data);
         if (data.appName) {
