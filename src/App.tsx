@@ -320,22 +320,38 @@ const VideoPlayer = ({
   }, [src, isYouTube]);
 
   // Multi-stage CORS fallback pipeline
-  const [stage, setStage] = useState<"direct" | "https-upgrade" | "proxy-cors" | "proxy-allorigins" | "failed">("direct");
+  const [stage, setStage] = useState<"direct" | "https-upgrade" | "proxy-cors" | "proxy-allorigins" | "proxy-codetabs" | "failed">("direct");
   const [hasFailedHttpsUpgrade, setHasFailedHttpsUpgrade] = useState(false);
   const [hasPermanentError, setHasPermanentError] = useState(false);
   const [playerErrorMessage, setPlayerErrorMessage] = useState<string | null>(null);
 
   const getUrlForStage = (originalUrl: string, currentStage: typeof stage) => {
+    // If the URL already contains a known proxy, we should be careful about double-proxying
+    const isAlreadyProxied = originalUrl.includes("corsproxy.io") || 
+                             originalUrl.includes("allorigins.win") || 
+                             originalUrl.includes("codetabs.com") ||
+                             originalUrl.includes("workers.dev/r/");
+
     if (currentStage === "https-upgrade") {
       if (originalUrl.startsWith("http://")) {
         return originalUrl.replace("http://", "https://");
       }
     }
+    
+    // Skip further proxying if already proxied and we are past direct stages, 
+    // unless it's the first proxy attempt
+    if (isAlreadyProxied && (currentStage === "proxy-allorigins" || currentStage === "proxy-codetabs")) {
+        return originalUrl;
+    }
+
     if (currentStage === "proxy-cors") {
       return `https://corsproxy.io/?url=${encodeURIComponent(originalUrl)}`;
     }
     if (currentStage === "proxy-allorigins") {
       return `https://api.allorigins.win/raw?url=${encodeURIComponent(originalUrl)}`;
+    }
+    if (currentStage === "proxy-codetabs") {
+      return `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(originalUrl)}`;
     }
     return originalUrl;
   };
@@ -411,9 +427,16 @@ const VideoPlayer = ({
 
   const advanceFallbackStage = () => {
     const currentStage = stageRef.current;
+    
+    // Check if the URL is already using a complex proxy that likely handles CORS
+    const isAlreadyProxied = src.includes("workers.dev/r/") || src.includes("corsproxy") || src.includes("allorigins");
+
     if (currentStage === "direct") {
       if (src.startsWith("http://") && window.location.protocol === "https:") {
         setStage("https-upgrade");
+      } else if (isAlreadyProxied) {
+        // If already proxied and failed, skip to last resort proxies or fail
+        setStage("proxy-allorigins");
       } else {
         setStage("proxy-cors");
       }
@@ -422,9 +445,11 @@ const VideoPlayer = ({
     } else if (currentStage === "proxy-cors") {
       setStage("proxy-allorigins");
     } else if (currentStage === "proxy-allorigins") {
+      setStage("proxy-codetabs");
+    } else if (currentStage === "proxy-codetabs") {
       setStage("failed");
       setHasPermanentError(true);
-      setPlayerErrorMessage("The stream failed to connect directly and through all secure proxies. It might be offline or blocked.");
+      setPlayerErrorMessage("The stream failed to connect directly and through all secure proxies. It might be offline or blocked by the provider.");
     }
   };
 
@@ -434,10 +459,11 @@ const VideoPlayer = ({
     let timeoutId: any;
 
     if (isWaiting && !hasPermanentError) {
+      // Increased timeout to 10s to allow slow HLS streams to initialize
       timeoutId = setTimeout(() => {
-        console.warn(`[VideoPlayer] Playback stage "${stageRef.current}" timed out after 4.5 seconds. Advancing...`);
+        console.warn(`[VideoPlayer] Playback stage "${stageRef.current}" timed out after 10 seconds. Advancing...`);
         advanceFallbackStage();
-      }, 4500);
+      }, 10000);
     }
 
     return () => {
