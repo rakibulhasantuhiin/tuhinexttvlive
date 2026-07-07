@@ -1337,6 +1337,9 @@ export default function App() {
   const [adminPasscode, setAdminPasscode] = useState("");
   const [adminStatus, setAdminStatus] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string | null>(null);
+  const [headerClickCount, setHeaderClickCount] = useState(0);
+  const [showAdminTrigger, setShowAdminTrigger] = useState(false);
+  const headerClickTimerRef = useRef<any>(null);
 
   // New banner and control states
   const [bannerImageUrl, setBannerImageUrl] = useState("");
@@ -1481,7 +1484,8 @@ export default function App() {
   const [authName, setAuthName] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
-  const isAdmin = isAdminUnlocked || loggedInUser?.role === "admin" || loggedInUser?.isAdmin === true || loggedInUser?.email === "rakibulhasantohin@gmail.com" || loggedInUser?.email === "rakibulhasantuhin010@gmail.com";
+  const isAdmin = loggedInUser?.role === "admin" || loggedInUser?.isAdmin === true || loggedInUser?.email === "rakibulhasantohin@gmail.com" || loggedInUser?.email === "rakibulhasantuhin010@gmail.com";
+  const isActuallyAdmin = isAdmin || isAdminUnlocked;
   const [allUsers, setAllUsers] = useState<UserAccount[]>([]);
 
   // Notification toggles
@@ -1526,6 +1530,13 @@ export default function App() {
   });
 
   const [detectedActiveQuality, setDetectedActiveQuality] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== "admin") {
+      setIsAdminUnlocked(false);
+      setAdminPasscode("");
+    }
+  }, [activeTab]);
 
   const fetchEverythingOnce = async (force = false) => {
     try {
@@ -3392,40 +3403,6 @@ export default function App() {
                   )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Admin Unlock Section */}
-                    <div className="glass-card p-5 rounded-3xl border border-white/5 bg-white/20 backdrop-blur-md">
-                      <div className="flex items-center gap-2 mb-4">
-                        <Lock size={16} className="text-red-400" />
-                        <h3 className="text-sm font-bold text-white">Console Lock</h3>
-                      </div>
-                      <div className="space-y-3">
-                        <input
-                          type="password"
-                          value={adminPasscode}
-                          onChange={(e) => setAdminPasscode(e.target.value)}
-                          className="w-full bg-black/40 border border-white/5 rounded-xl px-3 py-2 text-[11px] text-white outline-none focus:border-red-500/40"
-                          placeholder="Admin Passcode"
-                        />
-                        <button
-                          onClick={() => {
-                            if (adminPasscode === "2580" || adminPasscode === "tuhinext") {
-                              setIsAdminUnlocked(true);
-                              setAdminStatus("Admin Mode Unlocked!");
-                              setTimeout(() => setAdminStatus(null), 3000);
-                            } else {
-                              setAdminError("Invalid passcode!");
-                              setTimeout(() => setAdminError(null), 3000);
-                            }
-                          }}
-                          className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl text-[10px] uppercase tracking-widest transition-all active:scale-95 cursor-pointer"
-                        >
-                          Unlock Admin Panel
-                        </button>
-                        {adminError && <p className="text-[9px] text-red-500 mt-1 text-center font-semibold">{adminError}</p>}
-                        {adminStatus && <p className="text-[9px] text-emerald-500 mt-1 text-center font-semibold">{adminStatus}</p>}
-                      </div>
-                    </div>
-
                     {/* Compact Notifications Section */}
                     <div className="glass-card p-5 rounded-3xl border border-white/5 bg-white/20 backdrop-blur-md">
                       <div className="flex items-center gap-2 mb-4">
@@ -3493,10 +3470,7 @@ export default function App() {
                 </motion.div>
               )}
 
-              {activeTab === "admin" && loggedInUser && (
-                  loggedInUser.email === "rakibulhasantohin@gmail.com" || 
-                  loggedInUser.email === "rakibulhasantuhin010@gmail.com"
-                ) && (
+              {activeTab === "admin" && (
                 <motion.div
                   key="admin"
                   initial={{ opacity: 0, scale: 0.98 }}
@@ -3504,7 +3478,46 @@ export default function App() {
                   exit={{ opacity: 0, scale: 0.98 }}
                   className="max-w-4xl mx-auto space-y-6 pt-10"
                 >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/5 pb-4 gap-4">
+                  {!isAdminUnlocked ? (
+                    <div className="flex items-center justify-center min-h-[60vh] px-4">
+                      <div className="w-full max-w-md glass-card p-8 rounded-[2.5rem] border border-white/10 bg-white/5 backdrop-blur-xl text-center shadow-2xl">
+                        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+                          <Lock size={24} className="text-red-400" />
+                        </div>
+                        <h3 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Console Restricted</h3>
+                        <p className="text-white/40 text-xs font-medium mb-8 leading-relaxed">Please enter your authorized administrative passcode to proceed to the command center.</p>
+                        
+                        <div className="space-y-4">
+                          <input
+                            type="password"
+                            value={adminPasscode}
+                            onChange={(e) => setAdminPasscode(e.target.value)}
+                            className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-3.5 text-sm text-white text-center outline-none focus:border-red-500/40 transition-all font-mono tracking-[0.5em]"
+                            placeholder="••••••"
+                          />
+                          <button
+                            onClick={() => {
+                              if (adminPasscode === "753690") {
+                                setIsAdminUnlocked(true);
+                                setAdminStatus("Identity Verified. Welcome Admin.");
+                                setTimeout(() => setAdminStatus(null), 3000);
+                              } else {
+                                setAdminError("Verification Failed. Invalid Passcode.");
+                                setTimeout(() => setAdminError(null), 3000);
+                              }
+                            }}
+                            className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-2xl text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 shadow-xl shadow-red-600/20"
+                          >
+                            Authenticate Session
+                          </button>
+                          {adminError && <p className="text-[10px] text-red-500 mt-2 font-bold uppercase tracking-widest">{adminError}</p>}
+                          {adminStatus && <p className="text-[10px] text-emerald-500 mt-2 font-bold uppercase tracking-widest">{adminStatus}</p>}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/5 pb-4 gap-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-red-500/10 rounded-xl border border-red-500/20">
                           <Sliders className="text-red-400" size={18} />
@@ -3944,6 +3957,8 @@ export default function App() {
                         </motion.div>
                       )}
                     </AnimatePresence>
+                    </>
+                  )}
                 </motion.div>
               )}
               {activeTab === "home" && (
@@ -3957,7 +3972,29 @@ export default function App() {
                 >
                   {/* Top Channels Stats Bar */}
                   <div className="flex items-center justify-center w-full px-4 py-2.5 bg-white/[0.02] border border-white/5 rounded-2xl gap-2 overflow-x-auto no-scrollbar">
-                    <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-lg border border-white/10 shrink-0">
+                    <div 
+                      onClick={() => {
+                        setHeaderClickCount(prev => {
+                          const newCount = prev + 1;
+                          if (headerClickTimerRef.current) clearTimeout(headerClickTimerRef.current);
+                          
+                          if (newCount >= 5) {
+                            setShowAdminTrigger(true);
+                            setActiveTab("admin");
+                            setAdminStatus("Admin Access Triggered!");
+                            setTimeout(() => setAdminStatus(null), 3000);
+                            return 0;
+                          }
+
+                          headerClickTimerRef.current = setTimeout(() => {
+                            setHeaderClickCount(0);
+                          }, 3000); // Reset after 3 seconds of inactivity
+
+                          return newCount;
+                        });
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-lg border border-white/10 shrink-0 cursor-pointer active:scale-95 transition-transform"
+                    >
                       <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                       <span className="text-[9px] sm:text-[10px] font-bold text-white/50 uppercase tracking-widest leading-none whitespace-nowrap">
                         TUHINEXT TV
@@ -4606,7 +4643,7 @@ export default function App() {
           <span className="portrait:text-[11px] landscape:text-[9px] mt-0.5 tracking-tight">Settings</span>
         </button>
 
-        {loggedInUser && (loggedInUser.email === "rakibulhasantohin@gmail.com" || loggedInUser.email === "rakibulhasantuhin010@gmail.com") && (
+        {(showAdminTrigger || isAdmin) && (
           <button
             onClick={() => setActiveTab("admin")}
             className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all ${
