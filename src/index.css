@@ -1,1 +1,126 @@
 @import "tailwindcss";
+@import "video.js/dist/video-js.css";
+
+@theme {
+  --color-primary: #2563eb;
+  --color-card-bg: #111827;
+}
+
+@layer base {
+  body {
+    @apply bg-[#05070f] text-white antialiased;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  /* TV Remote Focus State */
+  button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+    outline: 4px solid #2563eb !important;
+    outline-offset: 2px !important;
+    border-radius: 8px !important;
+    /* optional: scale up selected element slightly */
+    transform: scale(1.02);
+    z-index: 50;
+    transition: all 0.2s ease-in-out;
+  }
+}
+
+.atmosphere {
+  background: 
+    radial-gradient(circle at 50% -20%, rgba(37, 99, 235, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(37, 99, 235, 0.05) 0%, transparent 40%);
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.glass-panel {
+  @apply bg-[#0b101e]/80 backdrop-blur-lg border border-gray-800/50;
+}
+
+.glass-card {
+  @apply bg-white/5 backdrop-blur-md border border-white/10 hover:border-white/20 transition-all duration-300;
+}
+
+.text-glow {
+  text-shadow: 0 0 20px rgba(37, 99, 235, 0.4);
+}
+
+.player-glow {
+  box-shadow: 0 0 50px -10px rgba(37, 99, 235, 0.2);
+}
+
+.will-change-transform {
+  will-change: transform, opacity;
+}
+
+.smooth-transition {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+.vjs-theme-city {
+  --vjs-theme-city--primary: #2563eb;
+}
+
+/* Custom VideoJS styling to match the theme */
+.video-js {
+  @apply rounded-lg overflow-hidden;
+}
+
+.video-js .vjs-big-play-button {
+  @apply bg-primary/80 border-none rounded-full w-16 h-16 leading-[64px] -ml-8 -mt-8;
+}
+
+.video-js .vjs-control-bar {
+  @apply bg-black/80;
+}
+
+/* Custom video settings overlay, auto-fade exactly with native controls */
+.vjs-custom-settings-overlay {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Show when user is active or hovering, or when the dropdown menu is open */
+.video-js.vjs-user-active .vjs-custom-settings-overlay,
+.video-js:hover .vjs-custom-settings-overlay,
+.vjs-custom-settings-overlay.is-menu-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Hide VideoJS native loading spinner and any related native shadows/glows completely to prevent double spinners */
+.video-js .vjs-loading-spinner,
+.vjs-loading-spinner,
+.vjs-waiting .vjs-loading-spinner,
+.vjs-seeking .vjs-loading-spinner,
+.video-js.vjs-waiting .vjs-loading-spinner,
+.video-js.vjs-seeking .vjs-loading-spinner,
+.vjs-loading-spinner::before,
+.vjs-loading-spinner::after,
+.video-js .vjs-loading-spinner::before,
+.video-js .vjs-loading-spinner::after {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  content: none !important;
+  box-shadow: none !important;
+  background: none !important;
+  border: none !important;
+}
+

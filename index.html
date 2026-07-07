@@ -1,54 +1,84 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TUHINEXT TV - Live</title>
     <script>
-      // Prevent "Cannot set property fetch" TypeError caused by whatwg-fetch in some players
-      try {
-        const originalFetch = window.fetch;
-        Object.defineProperty(window, 'fetch', {
-          get: function() { return originalFetch; },
-          set: function() { console.warn("Prevented polyfill from overwriting fetch"); },
-          configurable: true
-        });
-      } catch (e) {
-        console.error("Could not patch fetch:", e);
-      }
-    </script>
-    <script>
-      // Anti-Inspect Script to prevent easy access to DevTools
-      const blockPage = () => {
-        document.body.innerHTML = '<div style="display:flex;height:100vh;width:100vw;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif;"><h1>Access Denied. Reloading...</h1></div>';
-        setTimeout(() => window.location.reload(), 1000);
-      };
+      (function() {
+        try {
+          const originalFetch = window.fetch;
+          if (originalFetch) {
+            let currentFetch = originalFetch;
 
-      document.addEventListener('contextmenu', event => event.preventDefault());
-      document.addEventListener('keydown', event => {
-        if (event.keyCode === 123 || // F12
-            (event.ctrlKey && event.shiftKey && event.keyCode === 73) || // Ctrl+Shift+I
-            (event.ctrlKey && event.shiftKey && event.keyCode === 74) || // Ctrl+Shift+J
-            (event.ctrlKey && event.keyCode === 85)) { // Ctrl+U
-          event.preventDefault();
-          blockPage();
-          return false;
+            function defineAccessor(obj) {
+              if (!obj) return false;
+              try {
+                Object.defineProperty(obj, 'fetch', {
+                  configurable: true,
+                  enumerable: true,
+                  get() {
+                    return currentFetch;
+                  },
+                  set(v) {
+                    currentFetch = v;
+                  }
+                });
+                return true;
+              } catch (e) {
+                return false;
+              }
+            }
+
+            // Unconditionally define getters and setters at all possible levels
+            // so that reassignment (e.g., window.fetch = ...) never throws "has only a getter"
+            defineAccessor(window);
+            if (typeof Window !== 'undefined' && Window.prototype) {
+              defineAccessor(Window.prototype);
+            }
+            if (window.__proto__) {
+              defineAccessor(window.__proto__);
+            }
+            if (typeof globalThis !== 'undefined') {
+              defineAccessor(globalThis);
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to patch window.fetch:", e);
         }
-      });
-      
-      setInterval(() => {
-        const before = new Date().getTime();
-        debugger;
-        const after = new Date().getTime();
-        if (after - before > 100) {
-          blockPage();
-        }
-      }, 1000);
+      })();
     </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>TUHINEXT TV</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Clear any registered service workers to fix the white page issue caused by caching old assets
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const registration of registrations) {
+            registration.unregister().then(() => {
+              console.log('ServiceWorker unregistered successfully');
+            });
+          }
+        }).catch((err) => {
+          console.error('Error unregistering ServiceWorker:', err);
+        });
+      }
+
+      // Clear any stored Cache Storage caches containing old build assets
+      if ('caches' in window) {
+        caches.keys().then((keys) => {
+          return Promise.all(keys.map((key) => caches.delete(key)));
+        }).then(() => {
+          console.log('All Cache Storage cleared successfully');
+        }).catch((err) => {
+          console.error('Error clearing caches:', err);
+        });
+      }
+    </script>
   </body>
 </html>
 

@@ -1,0 +1,21 @@
+{
+  "name": "TUHINEXT TV",
+  "short_name": "TUHINEXT TV",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "description": "Watch Live TV Channels on Web and Smart TVs",
+  "icons": [
+    {
+      "src": "https://logodix.com/logo/2112449.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://logodix.com/logo/2112449.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

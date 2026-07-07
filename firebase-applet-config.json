@@ -1,0 +1,10 @@
+{
+  "projectId": "telemsg-app",
+  "appId": "1:209402570311:web:f3cce87fdfded18a803362",
+  "apiKey": "AIzaSyCik2rjcl7TKRiLGhGw8ID5YZepiAJHCSs",
+  "authDomain": "telemsg-app.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-1c44d389-e5a0-4e9f-ab46-06546753cae9",
+  "storageBucket": "telemsg-app.firebasestorage.app",
+  "messagingSenderId": "209402570311",
+  "measurementId": ""
+}
