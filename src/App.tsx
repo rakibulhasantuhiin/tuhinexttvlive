@@ -4257,7 +4257,7 @@ export default function App() {
                         }}
                         className="flex items-center gap-2 px-6 py-2 bg-primary/10 rounded-xl border border-primary/20 shrink-0 cursor-pointer active:scale-95 transition-all hover:bg-primary/20"
                       >
-                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                        <img src="https://i.ibb.co.com/hJQ9B1dy/TUHINEXT-TV-removebg-preview.png" className="w-5 h-5 object-contain" alt="Logo" />
                         <span className="text-[11px] sm:text-[12px] font-black text-white uppercase tracking-[0.3em] leading-none whitespace-nowrap">
                           TUHINEXT TV
                         </span>
