@@ -254,11 +254,23 @@ const getEPGInfo = (channelName: string, category: string) => {
 const getStreamType = (url: string) => {
   const lowercaseUrl = url.toLowerCase();
   if (lowercaseUrl.includes(".mpd")) return "application/dash+xml";
-  if (lowercaseUrl.includes(".m3u8") || lowercaseUrl.includes(".m3u")) return "application/x-mpegURL";
-  if (lowercaseUrl.includes(".ts")) return "video/mp2t";
-  if (lowercaseUrl.includes(".flv")) return "video/x-flv";
-  if (lowercaseUrl.includes(".mp4")) return "video/mp4";
+  if (lowercaseUrl.includes(".m3u8") || lowercaseUrl.includes(".m3u") || lowercaseUrl.includes("manifest") || lowercaseUrl.includes("playlist") || lowercaseUrl.includes("vnd.apple.mpegurl")) return "application/x-mpegURL";
+  if (lowercaseUrl.includes(".ts") || lowercaseUrl.includes(".m2ts") || lowercaseUrl.includes("mpegts") || lowercaseUrl.includes(".mts")) return "video/mp2t";
+  if (lowercaseUrl.includes(".flv") || lowercaseUrl.includes(".f4v")) return "video/x-flv";
+  if (lowercaseUrl.includes(".mp4") || lowercaseUrl.includes(".m4v") || lowercaseUrl.includes(".m4s") || lowercaseUrl.includes(".fmp4")) return "video/mp4";
   if (lowercaseUrl.includes(".webm")) return "video/webm";
+  if (lowercaseUrl.includes(".mkv")) return "video/x-matroska";
+  if (lowercaseUrl.includes(".mov") || lowercaseUrl.includes(".qt")) return "video/quicktime";
+  if (lowercaseUrl.includes(".avi")) return "video/x-msvideo";
+  if (lowercaseUrl.includes(".wmv")) return "video/x-ms-wmv";
+  if (lowercaseUrl.includes(".3gp")) return "video/3gpp";
+  if (lowercaseUrl.includes(".ogg") || lowercaseUrl.includes(".ogv")) return "video/ogg";
+  
+  // Robust fallback for streams that might not have extensions but are HLS
+  if (lowercaseUrl.includes("m3u8") || lowercaseUrl.includes("ts") || lowercaseUrl.includes("chunk")) {
+    return "application/x-mpegURL";
+  }
+  
   return "application/x-mpegURL"; // Default fallback
 };
 
@@ -314,28 +326,33 @@ const VideoPlayer = ({
   // Detect iframe-compatible or non-stream URLs (embedded players)
   const isIframe = useMemo(() => {
     if (isYouTube) return false;
-    if (src.includes("embed") || src.includes("iframe") || src.includes("player.vimeo.com")) {
+    if (src.includes("embed") || src.includes("iframe") || src.includes("player.vimeo.com") || src.includes("daily.xyz")) {
       return true;
     }
-    const hasVideoExtension = /\.(m3u8|mpd|mp4|webm|ts|flv|mkv|3gp|mov|avi|ogg)(\?|$)/i.test(src);
-    const looksLikeStream = src.includes("/hls/") || src.includes("/stream/") || src.includes("/live/") || src.includes("chunklist") || src.includes(".m3u8");
+    const hasVideoExtension = /\.(m3u8|mpd|mp4|webm|ts|flv|mkv|3gp|mov|avi|ogg|m2ts|m4s|fmp4|m4v)(\?|$)/i.test(src);
+    const looksLikeStream = src.includes("/hls/") || src.includes("/stream/") || src.includes("/live/") || src.includes("chunklist") || src.includes(".m3u8") || src.includes(".ts") || src.includes("manifest") || src.includes("playlist") || src.includes("mpegts") || src.includes(".mpd") || src.includes("master");
     
     return !hasVideoExtension && !looksLikeStream && (src.startsWith("http://") || src.startsWith("https://"));
   }, [src, isYouTube]);
 
   // Multi-stage CORS fallback pipeline
-  const [stage, setStage] = useState<"direct" | "https-upgrade" | "proxy-cors" | "proxy-org" | "proxy-allorigins" | "proxy-codetabs" | "proxy-dev" | "proxy-bridge" | "failed">("direct");
+  const [stage, setStage] = useState<"direct" | "https-upgrade" | "proxy-cors" | "proxy-org" | "proxy-allorigins" | "proxy-codetabs" | "proxy-dev" | "proxy-shaka" | "proxy-thing" | "proxy-is" | "proxy-any" | "proxy-ultra" | "proxy-cloud" | "proxy-scrapper" | "proxy-winter" | "proxy-ls" | "proxy-raw" | "proxy-m3u8" | "proxy-final" | "proxy-bridge" | "failed">("direct");
   const [hasFailedHttpsUpgrade, setHasFailedHttpsUpgrade] = useState(false);
   const [hasPermanentError, setHasPermanentError] = useState(false);
   const [playerErrorMessage, setPlayerErrorMessage] = useState<string | null>(null);
 
   const getUrlForStage = (originalUrl: string, currentStage: typeof stage) => {
+    if (currentStage === "direct") return originalUrl;
+    
     // If the URL already contains a known proxy, we should be careful about double-proxying
     const isAlreadyProxied = originalUrl.includes("corsproxy.io") || 
                              originalUrl.includes("corsproxy.org") || 
                              originalUrl.includes("allorigins.win") || 
                              originalUrl.includes("codetabs.com") ||
                              originalUrl.includes("bridged.cc") ||
+                             originalUrl.includes("thingproxy") ||
+                             originalUrl.includes("cors.eu.org") ||
+                             originalUrl.includes("htmldriven.com") ||
                              originalUrl.includes("workers.dev/r/");
 
     if (currentStage === "https-upgrade") {
@@ -344,12 +361,6 @@ const VideoPlayer = ({
       }
     }
     
-    // Skip further proxying if already proxied and we are past direct stages, 
-    // unless it's the first proxy attempt
-    if (isAlreadyProxied && (currentStage === "proxy-allorigins" || currentStage === "proxy-codetabs" || currentStage === "proxy-dev")) {
-        return originalUrl;
-    }
-
     if (currentStage === "proxy-cors") {
       return `https://corsproxy.io/?url=${encodeURIComponent(originalUrl)}`;
     }
@@ -364,6 +375,42 @@ const VideoPlayer = ({
     }
     if (currentStage === "proxy-dev") {
       return `https://cors-anywhere.azm.workers.dev/${originalUrl}`;
+    }
+    if (currentStage === "proxy-shaka") {
+      return `https://shaka-player-demo.appspot.com/proxy?url=${encodeURIComponent(originalUrl)}`;
+    }
+    if (currentStage === "proxy-thing") {
+      return `https://thingproxy.freeboard.io/fetch/${originalUrl}`;
+    }
+    if (currentStage === "proxy-is") {
+      return `https://cors-anywhere-is.herokuapp.com/${originalUrl}`;
+    }
+    if (currentStage === "proxy-any") {
+      return `https://cors-anywhere.herokuapp.com/${originalUrl}`;
+    }
+    if (currentStage === "proxy-ultra") {
+      return `https://cors.eu.org/${originalUrl}`;
+    }
+    if (currentStage === "proxy-cloud") {
+      return `https://cors-proxy.htmldriven.com/?url=${encodeURIComponent(originalUrl)}`;
+    }
+    if (currentStage === "proxy-scrapper") {
+      return `https://scrapper.run/?url=${encodeURIComponent(originalUrl)}`;
+    }
+    if (currentStage === "proxy-winter") {
+      return `https://winter-proxy.bridged.cc/${originalUrl}`;
+    }
+    if (currentStage === "proxy-ls") {
+      return `https://ls-proxy.bridged.cc/${originalUrl}`;
+    }
+    if (currentStage === "proxy-raw") {
+      return `https://api.allorigins.win/get?url=${encodeURIComponent(originalUrl)}`;
+    }
+    if (currentStage === "proxy-m3u8") {
+      return `https://m3u8proxy.herokuapp.com/proxy?url=${encodeURIComponent(originalUrl)}`;
+    }
+    if (currentStage === "proxy-final") {
+      return `https://cors-proxy.fringe.zone/${originalUrl}`;
     }
     if (currentStage === "proxy-bridge") {
       return `https://proxy.cors.sh/${originalUrl}`;
@@ -393,6 +440,9 @@ const VideoPlayer = ({
   useEffect(() => {
     if (isYouTube || isIframe) return;
     const newUrl = getUrlForStage(src, stage);
+    if (stage !== "direct") {
+      console.log(`[VideoPlayer] Connection Stage: ${stage} | URL: ${newUrl}`);
+    }
     setActiveUrl(newUrl);
   }, [stage, src, isYouTube, isIframe]);
 
@@ -443,14 +493,17 @@ const VideoPlayer = ({
   const advanceFallbackStage = () => {
     const currentStage = stageRef.current;
     
-    // Check if the URL is already using a complex proxy that likely handles CORS
+    // IP-based URLs are extremely likely to fail direct connection in secure contexts (Mixed Content/CORS)
+    const isIPUrl = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(src);
     const isAlreadyProxied = src.includes("workers.dev/r/") || src.includes("corsproxy") || src.includes("allorigins") || src.includes("codetabs");
 
     if (currentStage === "direct") {
       if (src.startsWith("http://") && window.location.protocol === "https:") {
         setStage("https-upgrade");
+      } else if (isIPUrl) {
+        // Jump straight to robust proxies for IP URLs
+        setStage("proxy-cors");
       } else if (isAlreadyProxied) {
-        // If already proxied and failed, skip to next major proxy stage
         setStage("proxy-org");
       } else {
         setStage("proxy-cors");
@@ -466,6 +519,30 @@ const VideoPlayer = ({
     } else if (currentStage === "proxy-codetabs") {
       setStage("proxy-dev");
     } else if (currentStage === "proxy-dev") {
+      setStage("proxy-shaka");
+    } else if (currentStage === "proxy-shaka") {
+      setStage("proxy-thing");
+    } else if (currentStage === "proxy-thing") {
+      setStage("proxy-is");
+    } else if (currentStage === "proxy-is") {
+      setStage("proxy-any");
+    } else if (currentStage === "proxy-any") {
+      setStage("proxy-ultra");
+    } else if (currentStage === "proxy-ultra") {
+      setStage("proxy-cloud");
+    } else if (currentStage === "proxy-cloud") {
+      setStage("proxy-scrapper");
+    } else if (currentStage === "proxy-scrapper") {
+      setStage("proxy-winter");
+    } else if (currentStage === "proxy-winter") {
+      setStage("proxy-ls");
+    } else if (currentStage === "proxy-ls") {
+      setStage("proxy-raw");
+    } else if (currentStage === "proxy-raw") {
+      setStage("proxy-m3u8");
+    } else if (currentStage === "proxy-m3u8") {
+      setStage("proxy-final");
+    } else if (currentStage === "proxy-final") {
       setStage("proxy-bridge");
     } else if (currentStage === "proxy-bridge") {
       setStage("failed");
@@ -480,11 +557,16 @@ const VideoPlayer = ({
     let timeoutId: any;
 
     if (isWaiting && !hasPermanentError) {
-      // Increased timeout to 10s to allow slow HLS streams to initialize
+      // Shorter timeout for direct/https stages, longer for proxies. 4K/8K needs more time.
+      const isIPUrl = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(src);
+      const timeoutDuration = (stage === "direct" || stage === "https-upgrade") 
+        ? (isIPUrl ? 4000 : 8000) 
+        : 22000; // Increased proxy timeout for stability
+      
       timeoutId = setTimeout(() => {
-        console.warn(`[VideoPlayer] Playback stage "${stageRef.current}" timed out after 10 seconds. Advancing...`);
+        console.warn(`[VideoPlayer] Playback stage "${stageRef.current}" timed out after ${timeoutDuration/1000}s. Advancing...`);
         advanceFallbackStage();
-      }, 10000);
+      }, timeoutDuration);
     }
 
     return () => {
@@ -495,8 +577,19 @@ const VideoPlayer = ({
   useEffect(() => {
     if (isYouTube || isIframe) return;
     if (!activeUrl) return;
+    if (playerRef.current && activeUrl) {
+      playerRef.current.src({
+        src: activeUrl,
+        type: getStreamType(activeUrl),
+      });
+      playerRef.current.play().catch(() => {});
+      return;
+    }
+
     if (!playerRef.current && videoRef.current) {
       const videoElement = document.createElement("video-js");
+      videoElement.setAttribute("crossorigin", "anonymous");
+      videoElement.setAttribute("playsinline", "true");
       videoElement.classList.add(
         "vjs-big-play-centered",
         "vjs-16-9",
@@ -509,13 +602,15 @@ const VideoPlayer = ({
         videoElement,
         {
           autoplay: true,
+          muted: true,
           controls: true,
           responsive: true,
           fluid: true,
           preload: "auto",
           liveui: true,
+          nativeControlsForTouch: false,
           inactivityTimeout: 3000,
-          playbackRates: [1],
+          playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
           controlBar: {
             children: [
               "playToggle",
@@ -525,6 +620,7 @@ const VideoPlayer = ({
               "durationDisplay",
               "progressControl",
               "liveDisplay",
+              "playbackRateMenuButton",
               "remainingTimeDisplay",
               "fullscreenToggle",
             ],
@@ -535,32 +631,36 @@ const VideoPlayer = ({
               type: getStreamType(activeUrl),
             },
           ],
+          liveTracker: {
+            trackingThreshold: 0,
+            liveTolerance: 15,
+          },
           html5: {
             vhs: {
               overrideNative: true,
-              enableLowInitialPlaylistLevel: true,
-              limitRenditionByPlayerDimensions: false,
-              useNetworkInformationApi: true,
-              fastQualityChange: true,
-              smoothQualityChange: false,
-              bufferLowWaterLine: 0,
-              goalBufferLength: 10,
-              maxGoalBufferLength: 30,
-              useDeviceAmpere: true,
-              allowSeperateSecurityDomains: true,
-              useBandwidthFromLocalStorage: false,
-              enableWorkers: true,
-              bandwidth: 500000,
-              liveSyncDurationCount: 2,
-              liveMaxLatencyDurationCount: 5,
-            },
-            nativeAudioTracks: false,
-            nativeVideoTracks: false,
-            hls: {
-              overrideNative: true,
               enableLowInitialPlaylist: true,
-              backBufferLength: 60,
+              limitRenditionByPlayerDimensions: false,
+              useDevicePixelRatio: true,
+              fastQualityChange: true,
+              smoothQualityChange: true,
+              backBufferLength: 120,
+              withCredentials: false,
+              handleManifestRedirects: true,
+              llhls: true,
+              goalBufferLength: 120,
+              maxGoalBufferLength: 300,
+              enableWorkers: true,
+              experimentalBufferBasedABR: true,
+              bandwidth: 8000000, // Higher initial bandwidth for 4K/8K
+              useNetworkInformationApi: true,
+              allowSeperateSecurityDomains: true,
+              cacheEncryptionKeys: true,
             },
+          },
+          // DASH specific settings
+          dash: {
+            useDevicePixelRatio: true,
+            enableLowInitialPlaylist: true,
           },
         },
         () => {
@@ -586,6 +686,73 @@ const VideoPlayer = ({
       player.on("pause", () => {
         setIsPlaying(false);
       });
+
+      player.on("ended", () => {
+        // If live stream ends unexpectedly, try to jump to live edge or re-sync
+        const anyPlayer = player as any;
+        if (anyPlayer.liveTracker && anyPlayer.liveTracker.isLive()) {
+          console.log("[VideoPlayer] Live stream ended unexpectedly, jumping to live edge...");
+          anyPlayer.liveTracker.seekToLiveEdge();
+          player.play().catch(() => {});
+        }
+      });
+
+      player.on("error", () => {
+        const error = player.error();
+        if (error) {
+          console.error("[VideoPlayer] Player error:", error);
+          // Advance on network or encryption errors
+          if (!hasPermanentError && (error.code === 2 || error.code === 4)) {
+            advanceFallbackStage();
+          }
+        }
+        hideLoader();
+      });
+
+      player.on("vhs-error", (e: any) => {
+        console.warn("[VideoPlayer] VHS error:", e);
+        if (!hasPermanentError && e && (e.errorType === "playlist" || e.errorType === "manifest" || e.code === 2)) {
+           advanceFallbackStage();
+        }
+      });
+
+      // Stalling prevention heartbeat
+      let lastTime = 0;
+      let lastCheck = Date.now();
+      let stallingCount = 0;
+      const heartbeatInterval = setInterval(() => {
+        if (player && !player.paused() && !player.seeking()) {
+          const currentTime = player.currentTime();
+          const now = Date.now();
+          const anyPlayer = player as any;
+          
+          if (currentTime === lastTime && now - lastCheck > 2500) {
+            stallingCount++;
+            console.warn(`[VideoPlayer] Playback appears stalled (attempt ${stallingCount}), attempting recovery...`);
+            
+            if (stallingCount >= 2) {
+              console.warn("[VideoPlayer] Persistent stalling, advancing fallback stage...");
+              advanceFallbackStage();
+              stallingCount = 0;
+            } else {
+              if (anyPlayer.liveTracker && anyPlayer.liveTracker.isLive()) {
+                anyPlayer.liveTracker.seekToLiveEdge();
+              } else {
+                player.currentTime(player.currentTime() + 0.1);
+              }
+              player.play().catch(() => {});
+            }
+            lastCheck = now;
+          } else if (currentTime !== lastTime) {
+            lastTime = currentTime;
+            lastCheck = now;
+            stallingCount = 0;
+          }
+        }
+      }, 1500);
+
+      player.on("dispose", () => clearInterval(heartbeatInterval));
+      
       player.on("seeked", hideLoader);
       player.on("loadeddata", hideLoader);
       player.on("error", hideLoader);
@@ -1033,7 +1200,6 @@ const VideoPlayer = ({
       {(isWaiting || isRetrying) && !hasPermanentError && (
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm transition-all duration-500">
           <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-          <span className="text-[10px] uppercase tracking-widest font-black text-white/40 mt-3 animate-pulse">Loading Stream...</span>
         </div>
       )}
 
