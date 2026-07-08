@@ -252,10 +252,13 @@ const getEPGInfo = (channelName: string, category: string) => {
 };
 
 const getStreamType = (url: string) => {
-  if (url.includes(".mpd")) return "application/dash+xml";
-  if (url.includes(".m3u")) return "application/x-mpegURL";
-  if (url.includes(".ts")) return "video/mp2t";
-  if (url.includes(".flv")) return "video/x-flv";
+  const lowercaseUrl = url.toLowerCase();
+  if (lowercaseUrl.includes(".mpd")) return "application/dash+xml";
+  if (lowercaseUrl.includes(".m3u8") || lowercaseUrl.includes(".m3u")) return "application/x-mpegURL";
+  if (lowercaseUrl.includes(".ts")) return "video/mp2t";
+  if (lowercaseUrl.includes(".flv")) return "video/x-flv";
+  if (lowercaseUrl.includes(".mp4")) return "video/mp4";
+  if (lowercaseUrl.includes(".webm")) return "video/webm";
   return "application/x-mpegURL"; // Default fallback
 };
 
@@ -281,6 +284,7 @@ const VideoPlayer = ({
   onBack?: () => void;
 }) => {
   const videoRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | null>(null);
   const [localActiveQuality, setLocalActiveQuality] = useState<number | null>(null);
   const [playerEl, setPlayerEl] = useState<HTMLElement | null>(null);
@@ -320,7 +324,7 @@ const VideoPlayer = ({
   }, [src, isYouTube]);
 
   // Multi-stage CORS fallback pipeline
-  const [stage, setStage] = useState<"direct" | "https-upgrade" | "proxy-cors" | "proxy-allorigins" | "proxy-codetabs" | "failed">("direct");
+  const [stage, setStage] = useState<"direct" | "https-upgrade" | "proxy-cors" | "proxy-org" | "proxy-allorigins" | "proxy-codetabs" | "proxy-dev" | "proxy-bridge" | "failed">("direct");
   const [hasFailedHttpsUpgrade, setHasFailedHttpsUpgrade] = useState(false);
   const [hasPermanentError, setHasPermanentError] = useState(false);
   const [playerErrorMessage, setPlayerErrorMessage] = useState<string | null>(null);
@@ -328,8 +332,10 @@ const VideoPlayer = ({
   const getUrlForStage = (originalUrl: string, currentStage: typeof stage) => {
     // If the URL already contains a known proxy, we should be careful about double-proxying
     const isAlreadyProxied = originalUrl.includes("corsproxy.io") || 
+                             originalUrl.includes("corsproxy.org") || 
                              originalUrl.includes("allorigins.win") || 
                              originalUrl.includes("codetabs.com") ||
+                             originalUrl.includes("bridged.cc") ||
                              originalUrl.includes("workers.dev/r/");
 
     if (currentStage === "https-upgrade") {
@@ -340,18 +346,27 @@ const VideoPlayer = ({
     
     // Skip further proxying if already proxied and we are past direct stages, 
     // unless it's the first proxy attempt
-    if (isAlreadyProxied && (currentStage === "proxy-allorigins" || currentStage === "proxy-codetabs")) {
+    if (isAlreadyProxied && (currentStage === "proxy-allorigins" || currentStage === "proxy-codetabs" || currentStage === "proxy-dev")) {
         return originalUrl;
     }
 
     if (currentStage === "proxy-cors") {
       return `https://corsproxy.io/?url=${encodeURIComponent(originalUrl)}`;
     }
+    if (currentStage === "proxy-org") {
+      return `https://corsproxy.org/?url=${encodeURIComponent(originalUrl)}`;
+    }
     if (currentStage === "proxy-allorigins") {
       return `https://api.allorigins.win/raw?url=${encodeURIComponent(originalUrl)}`;
     }
     if (currentStage === "proxy-codetabs") {
       return `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(originalUrl)}`;
+    }
+    if (currentStage === "proxy-dev") {
+      return `https://cors-anywhere.azm.workers.dev/${originalUrl}`;
+    }
+    if (currentStage === "proxy-bridge") {
+      return `https://proxy.cors.sh/${originalUrl}`;
     }
     return originalUrl;
   };
@@ -429,24 +444,30 @@ const VideoPlayer = ({
     const currentStage = stageRef.current;
     
     // Check if the URL is already using a complex proxy that likely handles CORS
-    const isAlreadyProxied = src.includes("workers.dev/r/") || src.includes("corsproxy") || src.includes("allorigins");
+    const isAlreadyProxied = src.includes("workers.dev/r/") || src.includes("corsproxy") || src.includes("allorigins") || src.includes("codetabs");
 
     if (currentStage === "direct") {
       if (src.startsWith("http://") && window.location.protocol === "https:") {
         setStage("https-upgrade");
       } else if (isAlreadyProxied) {
-        // If already proxied and failed, skip to last resort proxies or fail
-        setStage("proxy-allorigins");
+        // If already proxied and failed, skip to next major proxy stage
+        setStage("proxy-org");
       } else {
         setStage("proxy-cors");
       }
     } else if (currentStage === "https-upgrade") {
       setStage("proxy-cors");
     } else if (currentStage === "proxy-cors") {
+      setStage("proxy-org");
+    } else if (currentStage === "proxy-org") {
       setStage("proxy-allorigins");
     } else if (currentStage === "proxy-allorigins") {
       setStage("proxy-codetabs");
     } else if (currentStage === "proxy-codetabs") {
+      setStage("proxy-dev");
+    } else if (currentStage === "proxy-dev") {
+      setStage("proxy-bridge");
+    } else if (currentStage === "proxy-bridge") {
       setStage("failed");
       setHasPermanentError(true);
       setPlayerErrorMessage("The stream failed to connect directly and through all secure proxies. It might be offline or blocked by the provider.");
@@ -577,22 +598,36 @@ const VideoPlayer = ({
         setCurrentTime(player.currentTime() || 0);
         setDuration(player.duration() || 0);
       });
-
-      player.on("fullscreenchange", () => {
-        const full = player.isFullscreen();
-        setIsFullscreen(full);
-        if (full) {
-          if (screen.orientation && "lock" in screen.orientation) {
-            (screen.orientation as any).lock("landscape").catch(() => {});
-          }
-        } else {
-          if (screen.orientation && "unlock" in screen.orientation) {
-            screen.orientation.unlock();
-          }
-        }
-      });
     }
   }, [activeUrl]);
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      const isFs = !!document.fullscreenElement && document.fullscreenElement === containerRef.current;
+      setIsFullscreen(isFs);
+      if (isFs) {
+        if (screen.orientation && "lock" in screen.orientation) {
+          (screen.orientation as any).lock("landscape").catch(() => {});
+        }
+      } else {
+        if (screen.orientation && "unlock" in screen.orientation) {
+          screen.orientation.unlock();
+        }
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    document.addEventListener("mozfullscreenchange", handleFsChange);
+    document.addEventListener("msfullscreenchange", handleFsChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+      document.removeEventListener("mozfullscreenchange", handleFsChange);
+      document.removeEventListener("msfullscreenchange", handleFsChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (isYouTube || isIframe) return;
@@ -855,13 +890,16 @@ const VideoPlayer = ({
   };
 
   const toggleFullscreen = () => {
-    if (!playerRef.current) return;
-    if (playerRef.current.isFullscreen()) {
-      playerRef.current.exitFullscreen();
-      setIsFullscreen(false);
-    } else {
-      playerRef.current.requestFullscreen();
+    if (!containerRef.current) return;
+    
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
       setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
     }
   };
 
@@ -952,6 +990,7 @@ const VideoPlayer = ({
 
   return (
     <div 
+      ref={containerRef}
       data-vjs-player 
       className={`relative w-full h-full group select-none overflow-hidden rounded-[1.2rem] border border-white/5 shadow-2xl bg-black ${
         isLocked ? "z-[9995]" : "z-10"
@@ -1010,14 +1049,6 @@ const VideoPlayer = ({
           </p>
 
           <div className="flex flex-wrap gap-3 justify-center">
-            <button
-              onClick={() => {
-                window.open(src, "_blank");
-              }}
-              className="px-6 py-3 bg-primary hover:bg-primary/95 text-white text-[10px] font-black rounded-xl uppercase tracking-widest transition-all cursor-pointer shadow-lg shadow-primary/20 active:scale-95 flex items-center gap-2"
-            >
-              🚀 Play In Browser Tab
-            </button>
             <button
               onClick={() => {
                 setHasPermanentError(false);
@@ -1399,6 +1430,8 @@ export default function App() {
   const [brandingTelegramLink, setBrandingTelegramLink] = useState("");
   const [brandingSplashUrlMobile, setBrandingSplashUrlMobile] = useState("");
   const [brandingSplashUrlTv, setBrandingSplashUrlTv] = useState("");
+  const [splashMobileInput, setSplashMobileInput] = useState("");
+  const [splashPcInput, setSplashPcInput] = useState("");
   const [brandingSplashDuration, setBrandingSplashDuration] = useState(2.0);
   const [brandingHomeLogoUrl, setBrandingHomeLogoUrl] = useState("");
 
@@ -1645,9 +1678,11 @@ export default function App() {
             break;
           case "branding_splash_url_mobile":
             setBrandingSplashUrlMobile(data.value || "");
+            setSplashMobileInput(data.value || "");
             break;
           case "branding_splash_url_tv":
             setBrandingSplashUrlTv(data.value || "");
+            setSplashPcInput(data.value || "");
             break;
           case "branding_splash_duration":
             setBrandingSplashDuration(Number(data.value) || 2.0);
@@ -2745,6 +2780,34 @@ export default function App() {
     }
   };
 
+  const handleSaveMobileSplashUrl = async (url: string) => {
+    try {
+      setBrandingSplashUrlMobile(url);
+      setSplashMobileInput(url);
+      await setDoc(doc(db, "settings", "branding_splash_url_mobile"), { value: url }, { merge: true });
+      await triggerGlobalSync();
+      setAdminStatus("Mobile splash updated!");
+      setTimeout(() => setAdminStatus(null), 3000);
+    } catch (e) {
+      setAdminStatus("Save failed.");
+      setTimeout(() => setAdminStatus(null), 3000);
+    }
+  };
+
+  const handleSavePcSplashUrl = async (url: string) => {
+    try {
+      setBrandingSplashUrlTv(url);
+      setSplashPcInput(url);
+      await setDoc(doc(db, "settings", "branding_splash_url_tv"), { value: url }, { merge: true });
+      await triggerGlobalSync();
+      setAdminStatus("PC splash updated!");
+      setTimeout(() => setAdminStatus(null), 3000);
+    } catch (e) {
+      setAdminStatus("Save failed.");
+      setTimeout(() => setAdminStatus(null), 3000);
+    }
+  };
+
   const handleSaveSplashScreenUrl = async (url: string) => {
     try {
       setSplashScreenUrl(url);
@@ -3269,50 +3332,60 @@ export default function App() {
             transition={{ duration: 0.8, ease: "easeInOut" }}
             className="fixed inset-0 z-[99999] bg-black flex flex-col items-center justify-center select-none"
           >
-            <div className="flex flex-col items-center justify-center p-6 text-center w-full h-full">
-              {splashScreenUrl ? (
-                <motion.img 
-                  src={splashScreenUrl} 
-                  alt="Splash" 
-                  initial={{ opacity: 0, filter: 'blur(20px)', scale: 1.05 }}
-                  animate={{ opacity: 1, filter: 'blur(0px)', scale: 1 }}
-                  transition={{
-                    duration: 1.6,
-                    ease: [0.22, 1, 0.36, 1]
-                  }}
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ 
-                    scale: [0.9, 1.02, 1],
-                    opacity: [0, 1, 1],
-                  }}
-                  transition={{ 
-                    duration: 1.4,
-                    ease: "easeOut",
-                    times: [0, 0.7, 1]
-                  }}
-                  className="flex flex-col items-center justify-center"
-                >
-                  <TuhinextLogoSVG
-                    className="w-60 sm:w-80 md:w-[26rem] h-auto text-white"
-                    glow={true}
-                  />
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.7, duration: 0.5 }}
-                    className="mt-6 flex flex-col items-center gap-1"
+            <div className="flex flex-col items-center justify-center text-center w-full h-full relative overflow-hidden">
+              {(() => {
+                const isMobileView = typeof window !== "undefined" && window.innerWidth < 768;
+                const splashToDisplay = isMobileView 
+                  ? (brandingSplashUrlMobile || splashScreenUrl) 
+                  : (brandingSplashUrlTv || splashScreenUrl);
+                
+                if (splashToDisplay) {
+                  return (
+                    <motion.img 
+                      src={splashToDisplay} 
+                      alt="Splash" 
+                      initial={{ opacity: 0, filter: 'blur(20px)', scale: 1.05 }}
+                      animate={{ opacity: 1, filter: 'blur(0px)', scale: 1 }}
+                      transition={{
+                        duration: 1.6,
+                        ease: [0.22, 1, 0.36, 1]
+                      }}
+                      className="w-full h-full object-cover"
+                    />
+                  );
+                }
+                return (
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ 
+                      scale: [0.9, 1.02, 1],
+                      opacity: [0, 1, 1],
+                    }}
+                    transition={{ 
+                      duration: 1.4,
+                      ease: "easeOut",
+                      times: [0, 0.7, 1]
+                    }}
+                    className="flex flex-col items-center justify-center"
                   >
-                    <div className="text-[10px] sm:text-xs text-white/40 tracking-[0.25em] font-black uppercase">
-                      TUHINext Ecosystem
-                    </div>
-                    <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-white/20 to-transparent mt-1 animate-pulse" />
+                    <TuhinextLogoSVG
+                      className="w-60 sm:w-80 md:w-[26rem] h-auto text-white"
+                      glow={true}
+                    />
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.7, duration: 0.5 }}
+                      className="mt-6 flex flex-col items-center gap-1"
+                    >
+                      <div className="text-[10px] sm:text-xs text-white/40 tracking-[0.25em] font-black uppercase">
+                        TUHINext Ecosystem
+                      </div>
+                      <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-white/20 to-transparent mt-1 animate-pulse" />
+                    </motion.div>
                   </motion.div>
-                </motion.div>
-              )}
+                );
+              })()}
             </div>
           </motion.div>
         )}
@@ -3344,7 +3417,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <div className="max-w-6xl mx-auto space-y-10 pb-32">
+          <div className="max-w-7xl mx-auto space-y-10 pb-32">
             <AnimatePresence mode="wait">
             {activeTab === "settings" && (
                 <motion.div
@@ -3352,7 +3425,7 @@ export default function App() {
                   initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.98 }}
-                  className="max-w-4xl mx-auto space-y-6"
+                  className="max-w-5xl mx-auto space-y-6"
                 >
                   <div className="flex items-center gap-3 border-b border-white/5 pb-4">
                     <div className="p-2 bg-primary/10 rounded-xl">
@@ -3476,7 +3549,7 @@ export default function App() {
                   initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.98 }}
-                  className="max-w-4xl mx-auto space-y-6 pt-10"
+                  className="max-w-6xl mx-auto space-y-6 pt-10"
                 >
                   {!isAdminUnlocked ? (
                     <div className="flex items-center justify-center min-h-[60vh] px-4">
@@ -3616,13 +3689,35 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className="glass-card p-5 rounded-3xl border border-white/5 bg-white/5">
-                            <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4">Splash Screen</h4>
-                            <div className="space-y-3">
-                              <div className="flex gap-2">
-                                <input type="url" value={splashInput} onChange={e => setSplashInput(e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white font-mono outline-none focus:border-white/30" placeholder="Splash Image URL" />
+                          <div className="glass-card p-5 rounded-3xl border border-white/5 bg-white/5 md:col-span-2">
+                            <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4">Splash Screen Customization</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div className="space-y-2">
+                                <label className="text-[8px] text-white/30 uppercase font-black tracking-widest">Global Fallback</label>
+                                <div className="flex gap-2">
+                                  <input type="url" value={splashInput} onChange={e => setSplashInput(e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white font-mono outline-none focus:border-white/30" placeholder="Global Splash URL" />
+                                </div>
+                                <button onClick={() => handleSaveSplashScreenUrl(splashInput)} className="w-full bg-white/5 hover:bg-white/10 text-white text-[9px] font-black py-2 rounded-xl uppercase tracking-widest border border-white/10 transition-all">Update Global</button>
+                                <p className="text-[7px] text-white/20 italic uppercase tracking-wider">Fallback if specific URLs are empty.</p>
                               </div>
-                              <button onClick={() => handleSaveSplashScreenUrl(splashInput)} className="w-full bg-white text-black text-[10px] font-black py-2 rounded-xl uppercase tracking-widest">Update Splash</button>
+
+                              <div className="space-y-2">
+                                <label className="text-[8px] text-white/30 uppercase font-black tracking-widest">Mobile Splash (9:16)</label>
+                                <div className="flex gap-2">
+                                  <input type="url" value={splashMobileInput} onChange={e => setSplashMobileInput(e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white font-mono outline-none focus:border-white/30" placeholder="Mobile Splash URL" />
+                                </div>
+                                <button onClick={() => handleSaveMobileSplashUrl(splashMobileInput)} className="w-full bg-primary hover:bg-primary/90 text-white text-[9px] font-black py-2 rounded-xl uppercase tracking-widest shadow-lg shadow-primary/20 transition-all">Update Mobile</button>
+                                <p className="text-[7px] text-white/20 italic uppercase tracking-wider">Optimized for vertical screens.</p>
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-[8px] text-white/30 uppercase font-black tracking-widest">PC / TV Splash (16:9)</label>
+                                <div className="flex gap-2">
+                                  <input type="url" value={splashPcInput} onChange={e => setSplashPcInput(e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white font-mono outline-none focus:border-white/30" placeholder="PC Splash URL" />
+                                </div>
+                                <button onClick={() => handleSavePcSplashUrl(splashPcInput)} className="w-full bg-primary hover:bg-primary/90 text-white text-[9px] font-black py-2 rounded-xl uppercase tracking-widest shadow-lg shadow-primary/20 transition-all">Update PC</button>
+                                <p className="text-[7px] text-white/20 italic uppercase tracking-wider">Optimized for horizontal screens.</p>
+                              </div>
                             </div>
                           </div>
 
@@ -3971,7 +4066,7 @@ export default function App() {
                   className="space-y-4 sm:space-y-6 pb-20"
                 >
                   {/* Top Channels Stats Bar */}
-                  <div className="flex items-center justify-center w-full px-4 py-2.5 bg-white/[0.02] border border-white/5 rounded-2xl gap-2 overflow-x-auto no-scrollbar">
+                  <div className="flex items-center justify-center w-full px-6 py-3 bg-white/[0.03] border border-white/5 rounded-2xl">
                     <div 
                       onClick={() => {
                         setHeaderClickCount(prev => {
@@ -3993,10 +4088,10 @@ export default function App() {
                           return newCount;
                         });
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-lg border border-white/10 shrink-0 cursor-pointer active:scale-95 transition-transform"
+                      className="flex items-center gap-2 px-6 py-2 bg-primary/10 rounded-xl border border-primary/20 shrink-0 cursor-pointer active:scale-95 transition-all hover:bg-primary/20"
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      <span className="text-[9px] sm:text-[10px] font-bold text-white/50 uppercase tracking-widest leading-none whitespace-nowrap">
+                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      <span className="text-[11px] sm:text-[12px] font-black text-white uppercase tracking-[0.3em] leading-none whitespace-nowrap">
                         TUHINEXT TV
                       </span>
                     </div>
@@ -4167,7 +4262,7 @@ export default function App() {
                           Live TV Categories
                         </h3>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3 sm:gap-4 md:gap-5">
                           {categories.filter(c => c !== "All" && c !== "Favorites").map((cat) => {
                             const count = channels.filter(c => c.category === cat || (!c.category && cat === "General")).length;
                             return (
@@ -4241,7 +4336,7 @@ export default function App() {
                       </div>
 
                       {/* Category Channels Grid */}
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12 gap-3">
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-3 sm:gap-4">
                         {filteredGridChannels.map((channel) => (
                           <motion.button
                             key={channel.id}
@@ -4621,39 +4716,39 @@ export default function App() {
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#070708]/96 border-t border-white/5 backdrop-blur-md shadow-2xl flex justify-around items-center px-4 portrait:py-3 landscape:py-1.5 portrait:h-16 landscape:h-12 md:h-18 pb-[calc(8px+env(safe-area-inset-bottom))]">
         <button
           onClick={() => setActiveTab("home")}
-          className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all ${
+          className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all group ${
             activeTab === "home"
-              ? "text-primary scale-102 font-bold"
-              : "text-white/35 hover:text-white/60 font-medium"
+              ? "text-primary scale-105"
+              : "text-white/35 hover:text-white/70"
           }`}
         >
-          <Home size={window.innerWidth > window.innerHeight ? 18 : 22} className="transition-transform duration-300" />
-          <span className="portrait:text-[11px] landscape:text-[9px] mt-0.5 tracking-tight">Home</span>
+          <Home size={22} className="transition-all duration-300 group-hover:scale-110 group-hover:text-primary" />
+          <span className="portrait:text-[11px] landscape:text-[10px] mt-1 tracking-wide font-black uppercase">Home</span>
         </button>
 
         <button
           onClick={() => setActiveTab("settings")}
-          className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all ${
+          className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all group ${
             activeTab === "settings"
-              ? "text-primary scale-102 font-bold"
-              : "text-white/35 hover:text-white/60 font-medium"
+              ? "text-primary scale-105"
+              : "text-white/35 hover:text-white/70"
           }`}
         >
-          <Settings size={window.innerWidth > window.innerHeight ? 18 : 22} className="transition-transform duration-300" />
-          <span className="portrait:text-[11px] landscape:text-[9px] mt-0.5 tracking-tight">Settings</span>
+          <Settings size={22} className="transition-all duration-300 group-hover:scale-110 group-hover:text-primary" />
+          <span className="portrait:text-[11px] landscape:text-[10px] mt-1 tracking-wide font-black uppercase">Settings</span>
         </button>
 
         {(showAdminTrigger || isAdmin) && (
           <button
             onClick={() => setActiveTab("admin")}
-            className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all ${
+            className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all group ${
               activeTab === "admin"
-                ? "text-red-400 scale-102 font-bold"
-                : "text-white/35 hover:text-white/60 font-medium"
+                ? "text-red-400 scale-105"
+                : "text-white/35 hover:text-white/70"
             }`}
           >
-            <LayoutDashboard size={window.innerWidth > window.innerHeight ? 18 : 22} className="transition-transform duration-300" />
-            <span className="portrait:text-[11px] landscape:text-[9px] mt-0.5 tracking-tight">Admin Panel</span>
+            <LayoutDashboard size={22} className="transition-all duration-300 group-hover:scale-110 group-hover:text-red-400" />
+            <span className="portrait:text-[11px] landscape:text-[10px] mt-1 tracking-wide font-black uppercase">Admin Panel</span>
           </button>
         )}
       </div>
