@@ -1397,7 +1397,7 @@ const VideoPlayer = ({
 const getCategoryLogo = (categoryName: string): string => {
   const normalized = categoryName.toLowerCase().trim();
   if (normalized.includes("world cup") || normalized.includes("fifa")) {
-    return "https://i.ibb.co/68g5YmG/fifa-wc.png"; // FIFA World Cup 2026 Logo
+    return "https://digitalsynopsis.com/wp-content/uploads/2018/06/fifa-world-cup-logos-usa-mexico-canada-2026.jpg"; // FIFA World Cup 2026 Logo
   }
   if (normalized.includes("bangladesh") || normalized.includes("bd")) {
     return "https://i.ibb.co/VMybPhF/bd.png"; // Bangladesh flag circle
@@ -1418,7 +1418,7 @@ const getCategoryLogo = (categoryName: string): string => {
     return "https://upload.wikimedia.org/wikipedia/commons/6/6a/Movie_slate_icon.svg"; // Movies
   }
   // Fallback beautiful TV icon
-  return "https://i.ibb.co/SrbXG6r/default.png";
+  return "https://digitalsynopsis.com/wp-content/uploads/2018/06/fifa-world-cup-logos-usa-mexico-canada-2026.jpg";
 };
 
 export default function App() {
@@ -1661,7 +1661,7 @@ export default function App() {
   const [editingChanLogoPadding, setEditingChanLogoPadding] = useState<number>(0);
 
   const getCategoryLogoWithCustom = (categoryName: string): string => {
-    const custom = customCategories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+    const custom = customCategories.find(c => c.name.toLowerCase().trim() === categoryName.toLowerCase().trim());
     if (custom && custom.logo) {
       return custom.logo;
     }
@@ -2057,7 +2057,7 @@ export default function App() {
         updatedCats.push({
           id: "cat-fifa",
           name: "FIFA",
-          logo: "https://i.ibb.co/68g5YmG/fifa-wc.png",
+          logo: "https://digitalsynopsis.com/wp-content/uploads/2018/06/fifa-world-cup-logos-usa-mexico-canada-2026.jpg",
           isHidden: false
         });
         catsChanged = true;
@@ -4009,7 +4009,7 @@ export default function App() {
                                   <div key={cat.id || i} className="flex flex-col bg-black/40 p-4 rounded-2.5xl border border-white/5 hover:border-white/10 transition-all group relative overflow-hidden justify-between">
                                     <div className="flex items-center gap-3">
                                       <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center overflow-hidden border border-white/10 shrink-0">
-                                        <img src={logoSrc} alt={cat.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = "https://i.ibb.co/SrbXG6r/default.png" }} />
+                                        <img src={logoSrc} alt={cat.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = "https://digitalsynopsis.com/wp-content/uploads/2018/06/fifa-world-cup-logos-usa-mexico-canada-2026.jpg" }} />
                                       </div>
                                       <div className="truncate flex-1">
                                         <h5 className="text-[11px] font-black text-white uppercase tracking-tight truncate">{cat.name}</h5>
@@ -4232,36 +4232,38 @@ export default function App() {
                   className="space-y-4 sm:space-y-6 pb-20"
                 >
                   {/* Top Channels Stats Bar */}
-                  <div className="flex items-center justify-center w-full px-6 py-3 bg-white/[0.03] border border-white/5 rounded-2xl">
-                    <div 
-                      onClick={() => {
-                        setHeaderClickCount(prev => {
-                          const newCount = prev + 1;
-                          if (headerClickTimerRef.current) clearTimeout(headerClickTimerRef.current);
-                          
-                          if (newCount >= 5) {
-                            setShowAdminTrigger(true);
-                            setActiveTab("admin");
-                            setAdminStatus("Admin Access Triggered!");
-                            setTimeout(() => setAdminStatus(null), 3000);
-                            return 0;
-                          }
+                  {homeView !== "player" && (
+                    <div className="flex items-center justify-center w-full px-6 py-3 bg-white/[0.03] border border-white/5 rounded-2xl">
+                      <div 
+                        onClick={() => {
+                          setHeaderClickCount(prev => {
+                            const newCount = prev + 1;
+                            if (headerClickTimerRef.current) clearTimeout(headerClickTimerRef.current);
+                            
+                            if (newCount >= 5) {
+                              setShowAdminTrigger(true);
+                              setActiveTab("admin");
+                              setAdminStatus("Admin Access Triggered!");
+                              setTimeout(() => setAdminStatus(null), 3000);
+                              return 0;
+                            }
 
-                          headerClickTimerRef.current = setTimeout(() => {
-                            setHeaderClickCount(0);
-                          }, 3000); // Reset after 3 seconds of inactivity
+                            headerClickTimerRef.current = setTimeout(() => {
+                              setHeaderClickCount(0);
+                            }, 3000); // Reset after 3 seconds of inactivity
 
-                          return newCount;
-                        });
-                      }}
-                      className="flex items-center gap-2 px-6 py-2 bg-primary/10 rounded-xl border border-primary/20 shrink-0 cursor-pointer active:scale-95 transition-all hover:bg-primary/20"
-                    >
-                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                      <span className="text-[11px] sm:text-[12px] font-black text-white uppercase tracking-[0.3em] leading-none whitespace-nowrap">
-                        TUHINEXT TV
-                      </span>
+                            return newCount;
+                          });
+                        }}
+                        className="flex items-center gap-2 px-6 py-2 bg-primary/10 rounded-xl border border-primary/20 shrink-0 cursor-pointer active:scale-95 transition-all hover:bg-primary/20"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                        <span className="text-[11px] sm:text-[12px] font-black text-white uppercase tracking-[0.3em] leading-none whitespace-nowrap">
+                          TUHINEXT TV
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Facebook Follow popup verification trigger check */}
                   <AnimatePresence>
@@ -4878,46 +4880,51 @@ export default function App() {
       </AnimatePresence>
 
 
-              {/* Floating Bottom Navigation Tabs (Bottom Middle) - Replaced with full-width docked bottom tab bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#070708]/96 border-t border-white/5 backdrop-blur-md shadow-2xl flex justify-around items-center px-4 portrait:py-3 landscape:py-1.5 portrait:h-16 landscape:h-12 md:h-18 pb-[calc(8px+env(safe-area-inset-bottom))]">
-        <button
-          onClick={() => setActiveTab("home")}
-          className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all group ${
-            activeTab === "home"
-              ? "text-primary scale-105"
-              : "text-white/35 hover:text-white/70"
-          }`}
-        >
-          <Home size={22} className="transition-all duration-300 group-hover:scale-110 group-hover:text-primary" />
-          <span className="portrait:text-[11px] landscape:text-[10px] mt-1 tracking-wide font-black uppercase">Home</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("settings")}
-          className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all group ${
-            activeTab === "settings"
-              ? "text-primary scale-105"
-              : "text-white/35 hover:text-white/70"
-          }`}
-        >
-          <Settings size={22} className="transition-all duration-300 group-hover:scale-110 group-hover:text-primary" />
-          <span className="portrait:text-[11px] landscape:text-[10px] mt-1 tracking-wide font-black uppercase">Settings</span>
-        </button>
-
-        {(showAdminTrigger || isAdmin) && (
+              {/* Floating Navigation Tabs */}
+      {homeView !== "player" && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#070708]/96 border-t border-white/5 backdrop-blur-md shadow-2xl flex justify-around items-center px-4 portrait:py-3 landscape:py-1.5 portrait:h-16 landscape:h-12 md:h-18 pb-[calc(8px+env(safe-area-inset-bottom))]">
           <button
-            onClick={() => setActiveTab("admin")}
+            onClick={() => {
+              setActiveTab("home");
+              if (homeView !== "dashboard") setHomeView("dashboard");
+            }}
             className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all group ${
-              activeTab === "admin"
-                ? "text-red-400 scale-105"
+              activeTab === "home"
+                ? "text-primary scale-105"
                 : "text-white/35 hover:text-white/70"
             }`}
           >
-            <LayoutDashboard size={22} className="transition-all duration-300 group-hover:scale-110 group-hover:text-red-400" />
-            <span className="portrait:text-[11px] landscape:text-[10px] mt-1 tracking-wide font-black uppercase">Admin Panel</span>
+            <Home size={22} className="transition-all duration-300 group-hover:scale-110 group-hover:text-primary" />
+            <span className="portrait:text-[11px] landscape:text-[10px] mt-1 tracking-wide font-black uppercase">Home</span>
           </button>
-        )}
-      </div>
+
+          <button
+            onClick={() => setActiveTab("settings")}
+            className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all group ${
+              activeTab === "settings"
+                ? "text-primary scale-105"
+                : "text-white/35 hover:text-white/70"
+            }`}
+          >
+            <Settings size={22} className="transition-all duration-300 group-hover:scale-110 group-hover:text-primary" />
+            <span className="portrait:text-[11px] landscape:text-[10px] mt-1 tracking-wide font-black uppercase">Settings</span>
+          </button>
+
+          {(showAdminTrigger || isAdmin) && (
+            <button
+              onClick={() => setActiveTab("admin")}
+              className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all group ${
+                activeTab === "admin"
+                  ? "text-red-400 scale-105"
+                  : "text-white/35 hover:text-white/70"
+              }`}
+            >
+              <LayoutDashboard size={22} className="transition-all duration-300 group-hover:scale-110 group-hover:text-red-400" />
+              <span className="portrait:text-[11px] landscape:text-[10px] mt-1 tracking-wide font-black uppercase">Admin Panel</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Quota Exhausted Warning Indicator (Admin Only) */}
       <AnimatePresence>
