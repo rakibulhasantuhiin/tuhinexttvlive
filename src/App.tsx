@@ -1119,6 +1119,15 @@ const VideoPlayer = ({
           allowFullScreen
           referrerPolicy="no-referrer"
         />
+
+        {/* Watermark Logo for YouTube */}
+        <div className="absolute top-4 right-4 z-50 pointer-events-none select-none opacity-40 mix-blend-screen">
+          <img 
+            src="https://i.ibb.co.com/hJQ9B1dy/TUHINEXT-TV-removebg-preview.png" 
+            alt="Watermark" 
+            className="w-10 sm:w-16 h-auto object-contain"
+          />
+        </div>
       </div>
     );
   }
@@ -1151,6 +1160,15 @@ const VideoPlayer = ({
           allowFullScreen
           referrerPolicy="no-referrer"
         />
+
+        {/* Watermark Logo for Iframe */}
+        <div className="absolute top-4 right-4 z-50 pointer-events-none select-none opacity-40 mix-blend-screen">
+          <img 
+            src="https://i.ibb.co.com/hJQ9B1dy/TUHINEXT-TV-removebg-preview.png" 
+            alt="Watermark" 
+            className="w-10 sm:w-16 h-auto object-contain"
+          />
+        </div>
       </div>
     );
   }
@@ -1196,6 +1214,15 @@ const VideoPlayer = ({
       )}
 
       <div ref={videoRef} className="w-full h-full" />
+      
+      {/* Universal Watermark Logo (Always visible, even in fullscreen) */}
+      <div className="absolute top-4 right-4 z-[45] pointer-events-none select-none opacity-40 mix-blend-screen">
+        <img 
+          src="https://i.ibb.co.com/hJQ9B1dy/TUHINEXT-TV-removebg-preview.png" 
+          alt="Watermark" 
+          className="w-12 sm:w-20 h-auto object-contain"
+        />
+      </div>
       
       {(isWaiting || isRetrying) && !hasPermanentError && (
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm transition-all duration-500">
