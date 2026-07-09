@@ -602,7 +602,7 @@ const VideoPlayer = ({
         videoElement,
         {
           autoplay: true,
-          muted: true,
+          muted: false,
           controls: true,
           responsive: true,
           fluid: true,
@@ -671,17 +671,21 @@ const VideoPlayer = ({
       player.on("useractive", () => setUserActive(true));
       player.on("userinactive", () => setUserActive(false));
 
-      // Buffer / Loading state listeners
-      const showLoader = () => setIsWaiting(true);
+      // Buffer / Loading state listeners (Modified to keep screen frozen during buffering)
       const hideLoader = () => setIsWaiting(false);
 
-      player.on("waiting", showLoader);
-      player.on("seeking", showLoader);
-      player.on("loadstart", showLoader);
+      player.on("waiting", () => {}); // Do nothing to keep screen frozen
+      player.on("seeking", hideLoader);
+      player.on("loadstart", hideLoader);
       
       player.on("playing", () => {
         hideLoader();
         setIsPlaying(true);
+        // Ensure sound is ON when playing starts
+        if (player.muted()) {
+          player.muted(false);
+          player.volume(1);
+        }
       });
       player.on("pause", () => {
         setIsPlaying(false);
@@ -1191,9 +1195,17 @@ const VideoPlayer = ({
         .video-js .vjs-control-bar { display: none !important; }
         .video-js .vjs-big-play-button { display: none !important; }
         .video-js .vjs-loading-spinner, .vjs-loading-spinner { display: none !important; visibility: hidden !important; }
-        .aspect-fill video { object-fit: fill !important; }
-        .aspect-cover video { object-fit: cover !important; }
-        .aspect-contain video { object-fit: contain !important; }
+        
+        /* Fixed Aspect Ratio Logic */
+        .aspect-fill video, .aspect-fill .vjs-tech { object-fit: fill !important; width: 100% !important; height: 100% !important; }
+        .aspect-cover video, .aspect-cover .vjs-tech { object-fit: cover !important; width: 100% !important; height: 100% !important; }
+        .aspect-contain video, .aspect-contain .vjs-tech { object-fit: contain !important; width: 100% !important; height: 100% !important; }
+        
+        /* Ensure aspect ratio works in fullscreen */
+        :fullscreen .aspect-fill video, :fullscreen .aspect-fill .vjs-tech { object-fit: fill !important; }
+        :fullscreen .aspect-cover video, :fullscreen .aspect-cover .vjs-tech { object-fit: cover !important; }
+        :fullscreen .aspect-contain video, :fullscreen .aspect-contain .vjs-tech { object-fit: contain !important; }
+        
         .vjs-tech { pointer-events: none !important; }
       `}</style>
       
@@ -1224,12 +1236,6 @@ const VideoPlayer = ({
         />
       </div>
       
-      {(isWaiting || isRetrying) && !hasPermanentError && (
-        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm transition-all duration-500">
-          <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-        </div>
-      )}
-
       {hasPermanentError && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-b from-[#141829] to-[#0a0d18] p-6 text-center overflow-y-auto">
           <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-4 shadow-lg shadow-red-500/5 shrink-0">
@@ -1302,15 +1308,6 @@ const VideoPlayer = ({
           <div className="flex items-center gap-2">
             {!isLocked && (
               <>
-                {onOpenExternal && (
-                  <button 
-                    onClick={onOpenExternal}
-                    title="Open in New Tab"
-                    className="w-10 h-10 rounded-full border border-white/15 bg-black/40 flex items-center justify-center hover:bg-white/10 text-white transition-all cursor-pointer"
-                  >
-                    <Maximize2 size={16} />
-                  </button>
-                )}
                 <button 
                   onClick={handleMuteUnmute}
                   className="w-10 h-10 rounded-full border border-white/15 bg-black/40 flex items-center justify-center hover:bg-white/10 text-white transition-all cursor-pointer"
@@ -4592,25 +4589,25 @@ export default function App() {
                   )}
 
                   {homeView === "player" && activeChannel && (
-                    <div className="space-y-6">
+                    <div className="space-y-3 sm:space-y-4 h-full flex flex-col justify-between">
                       {/* Theatre Player Back Header */}
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 shrink-0">
                         <button 
                           onClick={() => setHomeView("category")}
-                          className="w-10 h-10 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all cursor-pointer shrink-0"
+                          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all cursor-pointer shrink-0"
                         >
                           <ArrowLeft size={18} />
                         </button>
-                        <div>
-                          <span className="text-[8.5px] font-black text-emerald-400 uppercase tracking-[0.25em] animate-pulse">Now Playing</span>
-                          <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-tight truncate leading-none mt-0.5">{activeChannel.name}</h2>
+                        <div className="min-w-0">
+                          <span className="text-[8px] sm:text-[8.5px] font-black text-emerald-400 uppercase tracking-[0.25em] animate-pulse">Now Playing</span>
+                          <h2 className="text-base sm:text-xl font-black text-white uppercase tracking-tight truncate leading-none mt-0.5">{activeChannel.name}</h2>
                         </div>
                       </div>
 
                       {/* Big Premium Player Container */}
-                      <div className="relative group max-w-[1100px] mx-auto w-full aspect-video">
-                        <div className="absolute -inset-1.5 bg-gradient-to-r from-primary/10 to-primary/0 rounded-[1.6rem] blur-2xl opacity-10 pointer-events-none" />
-                        <div className="relative bg-black rounded-[1.2rem] overflow-hidden shadow-2xl border border-white/5 h-full w-full">
+                      <div className="relative group max-w-[1100px] mx-auto w-full aspect-video flex-grow flex items-center justify-center min-h-0">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-primary/10 to-primary/0 rounded-[1.2rem] sm:rounded-[1.6rem] blur-xl opacity-10 pointer-events-none" />
+                        <div className="relative bg-black rounded-[0.8rem] sm:rounded-[1.2rem] overflow-hidden shadow-2xl border border-white/5 h-full w-full">
                           <VideoPlayer
                             src={activeChannel.url}
                             streamQuality={channelQualities[activeChannel.id] || streamQuality}
@@ -4630,19 +4627,19 @@ export default function App() {
                       </div>
 
                       {/* Horizontal slider list of Up Next channels in this category */}
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                          <h3 className="text-[10px] font-black text-white/40 uppercase tracking-widest flex items-center gap-2">
+                      <div className="space-y-2 shrink-0">
+                        <div className="flex items-center justify-between border-b border-white/5 pb-1">
+                          <h3 className="text-[9px] font-black text-white/40 uppercase tracking-widest flex items-center gap-2">
                             <span className="w-1 h-3 bg-primary rounded-full" />
                             Up Next In This Category
                           </h3>
                         </div>
 
-                        <div className="flex gap-2.5 overflow-x-auto pb-4 snap-x no-scrollbar">
+                        <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2 snap-x no-scrollbar">
                           {channels.filter(c => c.category === activeChannel.category && c.id !== activeChannel.id).slice(0, 18).map((channel) => (
                             <motion.button
                               key={channel.id}
-                              whileHover={{ y: -3 }}
+                              whileHover={{ y: -2 }}
                               whileTap={{ scale: 0.95 }}
                               onClick={() => {
                                 if (fbUnlockEnabled && !fbUnlocked) {
@@ -4651,9 +4648,9 @@ export default function App() {
                                   setActiveChannel(channel);
                                 }
                               }}
-                              className="group relative flex flex-col items-center bg-[#070914] border border-white/5 rounded-2xl p-3 text-center transition-all cursor-pointer flex-shrink-0 snap-start w-24 sm:w-28"
+                              className="group relative flex flex-col items-center bg-[#070914] border border-white/5 rounded-xl p-2 sm:p-2.5 text-center transition-all cursor-pointer flex-shrink-0 snap-start w-20 sm:w-24"
                             >
-                              <div className="aspect-square w-10 sm:w-12 bg-white rounded-full flex items-center justify-center p-0.5 mb-2 shadow-inner relative overflow-hidden group-hover:scale-105 transition-all">
+                              <div className="aspect-square w-8 sm:w-10 bg-white rounded-full flex items-center justify-center p-0.5 mb-1.5 shadow-inner relative overflow-hidden group-hover:scale-105 transition-all">
                                 <img 
                                   src={optimizeImage(channel.logo, 100, 100) || DEFAULT_CHANNEL_LOGO} 
                                   alt={channel.name}
@@ -4662,7 +4659,7 @@ export default function App() {
                                   referrerPolicy="no-referrer"
                                 />
                               </div>
-                              <h4 className="text-[9px] sm:text-[10px] font-bold text-white/70 group-hover:text-primary truncate w-full uppercase tracking-tighter">{channel.name}</h4>
+                              <h4 className="text-[8px] sm:text-[9px] font-bold text-white/70 group-hover:text-primary truncate w-full uppercase tracking-tighter">{channel.name}</h4>
                             </motion.button>
                           ))}
                         </div>
