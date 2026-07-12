@@ -1872,14 +1872,24 @@ export default function App() {
   }, [activeTab]);
 
   const fetchEverythingOnce = async (force = false) => {
+    if (sessionStorage.getItem("firestore_quota_exhausted") === "true") return;
+    
+    // Stale-While-Revalidate: If we have local data, don't show the loader
+    const hasLocalData = localStorage.getItem("tuhinext_channels") && localStorage.getItem("tuhinext_categories");
+    if (!force && !hasLocalData) setIsLoading(true);
+
     try {
-      // High Traffic Optimization: Only fetch from Firestore if cache is older than 6 hours
+      // QUOTA PROTECTION: Only fetch from Firestore if cache is older than 24 hours
       // OR if the user is an admin (who needs latest data)
+      // OR if a 10% random check triggers (staggers the load for 100k+ users)
       const lastSync = localStorage.getItem("tuhinext_last_sync_time");
       const cachedChannels = localStorage.getItem("tuhinext_channels");
       const cachedCats = localStorage.getItem("tuhinext_categories");
+      const isRandomCheck = Math.random() < 0.1; // 10% chance to check for updates anyway
 
-      if (!force && !isAdmin && lastSync && cachedChannels && Date.now() - parseInt(lastSync) < 21600000) {
+      const cacheLifetime = 86400000; // 24 hours cache freshness for maximum quota safety
+
+      if (!force && !isAdmin && lastSync && cachedChannels && (Date.now() - parseInt(lastSync) < cacheLifetime) && !isRandomCheck) {
         // Load from cache and skip network
         setChannels(JSON.parse(cachedChannels));
         if (cachedCats) {
@@ -2136,64 +2146,53 @@ export default function App() {
       setIsLoading(false);
     }, 5000); // reduced to 5s
 
-    // Real-time updates enabled for EVERYONE using Quota-Saving Sync Status snapshot
+    // Real-time updates enabled ONLY for Admin to save quota for 100k+ users
     let unsubSync: () => void = () => {};
 
-    // Fetch once on boot (utilizes 6h cache unless admin or force-load)
+    // Fetch once on boot (utilizes 24h cache + 10% random check for quota safety)
     fetchEverythingOnce();
 
-    // Listen only to the single "sync_status" document to save quota for 100k+ users
-    unsubSync = onSnapshot(doc(db, "settings", "sync_status"), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const remoteVersion = String(data.version || "");
-        const localVersion = localStorage.getItem("tuhinext_sync_version") || "";
-        
-        if (remoteVersion && remoteVersion !== localVersion) {
-          console.log("Remote changes detected! Version:", remoteVersion);
-          localStorage.setItem("tuhinext_sync_version", remoteVersion);
+    if (isAdmin) {
+      unsubSync = onSnapshot(doc(db, "settings", "sync_status"), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const remoteVersion = String(data.version || "");
+          const localVersion = localStorage.getItem("tuhinext_sync_version") || "";
           
-          // CRITICAL QUOTA PROTECTION:
-          // If the user is a regular user and has a fresh cache (< 3 hours), do NOT fetch from Firestore immediately.
-          // Just update the local sync version token. The next time they boot or when the cache naturellement expires,
-          // they'll get the fresh channel list. This completely prevents massive read spikes when admin edits a channel!
-          const lastSync = localStorage.getItem("tuhinext_last_sync_time");
-          const hasCache = localStorage.getItem("tuhinext_channels") && localStorage.getItem("tuhinext_categories");
-          const isCacheFresh = lastSync && hasCache && (Date.now() - parseInt(lastSync) < 10800000); // 3 hours cache freshness
-
-          if (isCacheFresh && !isAdmin) {
-            console.log("Local cache is fresh (< 3h). Skipping immediate database fetch to protect Firestore quota.");
-          } else {
-            if (!isAdmin) {
-              // Non-admin: introduce a randomized jitter delay (between 10 and 120 seconds)
-              // to spread the load and prevent tens of thousands of simultaneous read requests.
-              const jitter = Math.floor(10000 + Math.random() * 110000);
-              console.log(`Scheduling database fetch with ${Math.round(jitter/1000)}s randomized delay to distribute load...`);
-              setTimeout(() => {
-                fetchEverythingOnce(true);
-              }, jitter);
-            } else {
-              // Admin gets instant refresh
-              fetchEverythingOnce(true);
-            }
+          if (remoteVersion && remoteVersion !== localVersion) {
+            console.log("Remote changes detected! Version:", remoteVersion);
+            localStorage.setItem("tuhinext_sync_version", remoteVersion);
+            fetchEverythingOnce(true);
           }
         }
-      } else {
-        // Fallback: If sync_status doesn't exist yet, we initialize it
-        if (isAdmin) {
-          triggerGlobalSync();
-        }
-      }
+        setIsLoading(false);
+        clearTimeout(loadingTimeout);
+      }, (err: any) => {
+        console.warn("Sync error:", err);
+        setIsLoading(false);
+        clearTimeout(loadingTimeout);
+      });
+    } else {
+      // Regular users: Do NOT use onSnapshot. It costs 1 read per user per edit.
+      // We rely on the boot-time check and a one-time "lazy" check after 2 minutes.
+      setTimeout(async () => {
+        try {
+          const docSnap = await getDoc(doc(db, "settings", "sync_status"));
+          if (docSnap.exists()) {
+            const remoteVersion = String(docSnap.data().version || "");
+            const localVersion = localStorage.getItem("tuhinext_sync_version") || "";
+            if (remoteVersion && remoteVersion !== localVersion) {
+              localStorage.setItem("tuhinext_sync_version", remoteVersion);
+              // Background update with high jitter (5-20 mins) to spread database load
+              setTimeout(() => fetchEverythingOnce(true), 300000 + Math.random() * 900000);
+            }
+          }
+        } catch {}
+      }, 120000);
+
       setIsLoading(false);
       clearTimeout(loadingTimeout);
-    }, (err: any) => {
-      console.warn("Quota or Network Error in sync snapshot:", err);
-      if (err.code === 'resource-exhausted') {
-        sessionStorage.setItem("firestore_quota_exhausted", "true");
-      }
-      setIsLoading(false);
-      clearTimeout(loadingTimeout);
-    });
+    }
 
     return () => {
       unsubSync();
@@ -2282,9 +2281,9 @@ export default function App() {
     const updatePresence = async () => {
       if (sessionStorage.getItem("firestore_quota_exhausted") === "true") return;
       
-      // Optimization: Only 1% of regular users update presence to stay within free tier
+      // Optimization: Only 0.5% of regular users update presence to stay within free tier
       // but still provide a statistically relevant sample. Admins always update.
-      if (!isAdmin && Math.random() > 0.01) return;
+      if (!isAdmin && Math.random() > 0.005) return;
 
       try {
         await setDoc(presenceRef, { 
