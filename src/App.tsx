@@ -1445,7 +1445,117 @@ const getCategoryLogo = (categoryName: string): string => {
   return "https://digitalsynopsis.com/wp-content/uploads/2018/06/fifa-world-cup-logos-usa-mexico-canada-2026.jpg";
 };
 
+const LiveViewerBadge = ({ count }: { count: number }) => {
+  const formatViewerCount = (num: number) => {
+    if (num >= 1000) {
+      const kValue = num / 1000;
+      const formatted = kValue.toFixed(1);
+      if (formatted.endsWith(".0")) {
+        return Math.round(kValue) + "K";
+      }
+      return formatted + "K";
+    }
+    return num.toString();
+  };
+
+  return (
+    <div className="inline-flex items-center gap-1 p-0.5 sm:p-1 bg-black/60 border border-white/10 rounded-full select-none pointer-events-none scale-90 sm:scale-100 shadow-xl backdrop-blur-md">
+      {/* Live Pill */}
+      <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 bg-white/5 rounded-full border border-white/5">
+        <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-red-500"></span>
+        </span>
+        <span className="text-[9px] sm:text-[10px] font-black text-white uppercase tracking-wider">LIVE</span>
+      </div>
+      
+      {/* Eye Pill */}
+      <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 bg-white/5 rounded-full border border-white/5">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-500">
+          <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+        <span className="text-[9px] sm:text-[10px] font-black text-white tracking-tight">{formatViewerCount(count)}</span>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
+  const [viewerCount, setViewerCount] = useState<number>(() => {
+    const currentHour = new Date().getHours();
+    // 12:00 AM (0) to 9:00 AM (9) -> within 20,000 (Randomize between 5,500 and 19,000)
+    if (currentHour >= 0 && currentHour < 9) {
+      return Math.floor(5500 + Math.random() * 13500);
+    } else {
+      // 9:00 AM to 11:59 PM -> between 1,500 and 3,000 (Randomize between 1,400 and 3,100)
+      return Math.floor(1400 + Math.random() * 1700);
+    }
+  });
+
+  useEffect(() => {
+    let surgeDirection = 0; // 0 = none, 1 = up, -1 = down
+    let surgeSteps = 0;
+
+    const intervalId = setInterval(() => {
+      setViewerCount(prev => {
+        const currentHour = new Date().getHours();
+        
+        // Define limits based on current time
+        const isLateNight = currentHour >= 0 && currentHour < 9;
+        const minLimit = isLateNight ? 5500 : 1400;
+        const maxLimit = isLateNight ? 19000 : 3100;
+
+        // Transition gracefully if out of bounds (e.g., when the time block shifts)
+        if (prev < minLimit) {
+          return prev + Math.floor(40 + Math.random() * 30);
+        }
+        if (prev > maxLimit) {
+          return prev - Math.floor(40 + Math.random() * 30);
+        }
+
+        let delta = 0;
+
+        // Execute surge steps if active
+        if (surgeSteps > 0) {
+          if (surgeDirection > 0) {
+            // Positive surge: add 15-25 viewers per 3 seconds (adds ~200 viewers over 30s / 10 steps)
+            delta = Math.floor(15 + Math.random() * 10);
+          } else {
+            // Negative surge: drop 10-20 viewers per 3 seconds (drops ~150 viewers over 30s)
+            delta = -Math.floor(10 + Math.random() * 10);
+          }
+          surgeSteps--;
+        } else {
+          // No active surge. Roll for potential new surge or do normal drift
+          const roll = Math.random();
+          if (roll < 0.02) {
+            // Start positive surge (lasts 10 steps = 30 seconds)
+            surgeDirection = 1;
+            surgeSteps = 10;
+            delta = Math.floor(15 + Math.random() * 10);
+          } else if (roll < 0.02) {
+            // Start negative surge (lasts 10 steps = 30 seconds)
+            surgeDirection = -1;
+            surgeSteps = 10;
+            delta = -Math.floor(10 + Math.random() * 10);
+          } else {
+            // Normal slow drift (1 to 4 users change to make 6.6k to 6.5k drop take ~2 minutes)
+            const driftBias = Math.random() > 0.5 ? 1 : -1;
+            delta = Math.floor(-2 + Math.random() * 5) + (Math.random() > 0.7 ? driftBias : 0);
+          }
+        }
+
+        const nextVal = prev + delta;
+        if (nextVal < minLimit) return minLimit + Math.floor(Math.random() * 10);
+        if (nextVal > maxLimit) return maxLimit - Math.floor(Math.random() * 10);
+        return nextVal;
+      });
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   const [channels, setChannels] = useState<Channel[]>(() => {
     try {
       const cached = localStorage.getItem("tuhinext_channels");
@@ -2042,8 +2152,31 @@ export default function App() {
         if (remoteVersion && remoteVersion !== localVersion) {
           console.log("Remote changes detected! Version:", remoteVersion);
           localStorage.setItem("tuhinext_sync_version", remoteVersion);
-          // Force a background refresh of channels and settings
-          fetchEverythingOnce(true);
+          
+          // CRITICAL QUOTA PROTECTION:
+          // If the user is a regular user and has a fresh cache (< 3 hours), do NOT fetch from Firestore immediately.
+          // Just update the local sync version token. The next time they boot or when the cache naturellement expires,
+          // they'll get the fresh channel list. This completely prevents massive read spikes when admin edits a channel!
+          const lastSync = localStorage.getItem("tuhinext_last_sync_time");
+          const hasCache = localStorage.getItem("tuhinext_channels") && localStorage.getItem("tuhinext_categories");
+          const isCacheFresh = lastSync && hasCache && (Date.now() - parseInt(lastSync) < 10800000); // 3 hours cache freshness
+
+          if (isCacheFresh && !isAdmin) {
+            console.log("Local cache is fresh (< 3h). Skipping immediate database fetch to protect Firestore quota.");
+          } else {
+            if (!isAdmin) {
+              // Non-admin: introduce a randomized jitter delay (between 10 and 120 seconds)
+              // to spread the load and prevent tens of thousands of simultaneous read requests.
+              const jitter = Math.floor(10000 + Math.random() * 110000);
+              console.log(`Scheduling database fetch with ${Math.round(jitter/1000)}s randomized delay to distribute load...`);
+              setTimeout(() => {
+                fetchEverythingOnce(true);
+              }, jitter);
+            } else {
+              // Admin gets instant refresh
+              fetchEverythingOnce(true);
+            }
+          }
         }
       } else {
         // Fallback: If sync_status doesn't exist yet, we initialize it
@@ -2149,9 +2282,9 @@ export default function App() {
     const updatePresence = async () => {
       if (sessionStorage.getItem("firestore_quota_exhausted") === "true") return;
       
-      // Optimization: Only 5% of users update presence to stay within free tier
-      // but still provide a statistically relevant sample
-      if (!isAdmin && Math.random() > 0.05) return;
+      // Optimization: Only 1% of regular users update presence to stay within free tier
+      // but still provide a statistically relevant sample. Admins always update.
+      if (!isAdmin && Math.random() > 0.01) return;
 
       try {
         await setDoc(presenceRef, { 
@@ -2178,6 +2311,13 @@ export default function App() {
     const fetchCount = async () => {
       if (document.visibilityState !== 'visible') return;
       
+      // CRITICAL QUOTA PROTECTION: Non-admin users do not need to query active user counts from Firestore.
+      // This single optimization saves millions of Firestore daily reads for popular apps!
+      if (!isAdmin) {
+        setOnlineUsersCount(prev => Math.max(12, prev + (Math.floor(Math.random() * 3) - 1)));
+        return;
+      }
+      
       if (sessionStorage.getItem("firestore_quota_exhausted") === "true") {
         // Fallback: Simulate active users with jitter
         setOnlineUsersCount(prev => Math.max(12, prev + (Math.floor(Math.random() * 5) - 2)));
@@ -2191,9 +2331,8 @@ export default function App() {
         const snap = await getCountFromServer(q);
         const count = snap.data().count;
         
-        // Extrapolate count based on 5% sampling for regular users
-        // Since admins (usually 1 or few) always write, we subtract them if needed or just scale
-        const estimated = Math.max(1, Math.floor(count * 20)); 
+        // Extrapolate count based on 1% sampling for regular users (multiply by 100)
+        const estimated = Math.max(1, Math.floor(count * 100)); 
         setOnlineUsersCount(estimated + (Math.floor(Math.random() * 3) - 1));
       } catch (e: any) {
         if (e.code === 'resource-exhausted') {
@@ -4257,7 +4396,7 @@ export default function App() {
                 >
                   {/* Top Channels Stats Bar */}
                   {homeView !== "player" && (
-                    <div className="flex items-center justify-center w-full px-6 py-3 bg-white/[0.03] border border-white/5 rounded-2xl">
+                    <div className="flex items-center justify-between w-full px-4 sm:px-6 py-3 bg-white/[0.03] border border-white/5 rounded-2xl gap-3">
                       <div 
                         onClick={() => {
                           setHeaderClickCount(prev => {
@@ -4279,13 +4418,16 @@ export default function App() {
                             return newCount;
                           });
                         }}
-                        className="flex items-center gap-2 px-6 py-2 bg-primary/10 rounded-xl border border-primary/20 shrink-0 cursor-pointer active:scale-95 transition-all hover:bg-primary/20"
+                        className="flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-xl border border-primary/20 shrink-0 cursor-pointer active:scale-95 transition-all hover:bg-primary/20"
                       >
                         <img src="https://i.ibb.co.com/hJQ9B1dy/TUHINEXT-TV-removebg-preview.png" className="w-5 h-5 object-contain" alt="Logo" />
                         <span className="text-[11px] sm:text-[12px] font-black text-white uppercase tracking-[0.3em] leading-none whitespace-nowrap">
                           TUHINEXT TV
                         </span>
                       </div>
+
+                      {/* Transparent Live Viewer Badge */}
+                      <LiveViewerBadge count={viewerCount} />
                     </div>
                   )}
 
@@ -4591,16 +4733,23 @@ export default function App() {
                   {homeView === "player" && activeChannel && (
                     <div className="space-y-3 sm:space-y-4 h-full flex flex-col justify-between">
                       {/* Theatre Player Back Header */}
-                      <div className="flex items-center gap-3 shrink-0">
-                        <button 
-                          onClick={() => setHomeView("category")}
-                          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all cursor-pointer shrink-0"
-                        >
-                          <ArrowLeft size={18} />
-                        </button>
-                        <div className="min-w-0">
-                          <span className="text-[8px] sm:text-[8.5px] font-black text-emerald-400 uppercase tracking-[0.25em] animate-pulse">Now Playing</span>
-                          <h2 className="text-base sm:text-xl font-black text-white uppercase tracking-tight truncate leading-none mt-0.5">{activeChannel.name}</h2>
+                      <div className="flex items-center justify-between shrink-0 gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <button 
+                            onClick={() => setHomeView("category")}
+                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all cursor-pointer shrink-0"
+                          >
+                            <ArrowLeft size={18} />
+                          </button>
+                          <div className="min-w-0">
+                            <span className="text-[8px] sm:text-[8.5px] font-black text-emerald-400 uppercase tracking-[0.25em] animate-pulse">Now Playing</span>
+                            <h2 className="text-base sm:text-xl font-black text-white uppercase tracking-tight truncate leading-none mt-0.5">{activeChannel.name}</h2>
+                          </div>
+                        </div>
+
+                        {/* Computer Screen Live Badge inside Header */}
+                        <div className="hidden sm:block">
+                          <LiveViewerBadge count={viewerCount} />
                         </div>
                       </div>
 
@@ -4662,6 +4811,11 @@ export default function App() {
                               <h4 className="text-[8px] sm:text-[9px] font-bold text-white/70 group-hover:text-primary truncate w-full uppercase tracking-tighter">{channel.name}</h4>
                             </motion.button>
                           ))}
+                        </div>
+
+                        {/* Mobile Only Live Badge underneath the Up Next horizontal channels list */}
+                        <div className="flex sm:hidden justify-center pt-2">
+                          <LiveViewerBadge count={viewerCount} />
                         </div>
                       </div>
                     </div>
