@@ -453,8 +453,6 @@ const VideoPlayer = ({
   const [aspectRatio, setAspectRatio] = useState<"contain" | "fill" | "cover">("contain");
   const [isLocked, setIsLocked] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const controlsTimeoutRef = useRef<any>(null);
 
   const resetControlsTimeout = () => {
@@ -469,19 +467,6 @@ const VideoPlayer = ({
 
   const handleContainerInteraction = () => {
     resetControlsTimeout();
-  };
-
-  const formatTime = (seconds: number) => {
-    if (isNaN(seconds) || seconds === Infinity) return "00:00";
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    const parts = [
-      h > 0 ? h : null,
-      m.toString().padStart(2, "0"),
-      s.toString().padStart(2, "0"),
-    ].filter(Boolean);
-    return parts.join(":");
   };
 
   // Helper to advance to the next pipeline stage on failure/timeout
@@ -639,19 +624,19 @@ const VideoPlayer = ({
             vhs: {
               overrideNative: true,
               enableLowInitialPlaylist: true,
-              limitRenditionByPlayerDimensions: false,
+              limitRenditionByPlayerDimensions: true,
               useDevicePixelRatio: true,
               fastQualityChange: true,
               smoothQualityChange: true,
-              backBufferLength: 120,
+              backBufferLength: 30,
               withCredentials: false,
               handleManifestRedirects: true,
               llhls: true,
-              goalBufferLength: 120,
-              maxGoalBufferLength: 300,
+              goalBufferLength: 45,
+              maxGoalBufferLength: 60,
               enableWorkers: true,
               experimentalBufferBasedABR: true,
-              bandwidth: 8000000, // Higher initial bandwidth for 4K/8K
+              bandwidth: 4000000, // Reduced initial bandwidth to avoid initial lag
               useNetworkInformationApi: true,
               allowSeperateSecurityDomains: true,
               cacheEncryptionKeys: true,
@@ -730,12 +715,11 @@ const VideoPlayer = ({
           const now = Date.now();
           const anyPlayer = player as any;
           
-          if (currentTime === lastTime && now - lastCheck > 2500) {
+          if (currentTime === lastTime && now - lastCheck > 4000) { // Increased to 4s
             stallingCount++;
-            console.warn(`[VideoPlayer] Playback appears stalled (attempt ${stallingCount}), attempting recovery...`);
+            console.warn(`[VideoPlayer] Playback stalled (attempt ${stallingCount})`);
             
-            if (stallingCount >= 2) {
-              console.warn("[VideoPlayer] Persistent stalling, advancing fallback stage...");
+            if (stallingCount >= 3) {
               advanceFallbackStage();
               stallingCount = 0;
             } else {
@@ -753,7 +737,7 @@ const VideoPlayer = ({
             stallingCount = 0;
           }
         }
-      }, 1500);
+      }, 3000); // Increased to 3s interval
 
       player.on("dispose", () => clearInterval(heartbeatInterval));
       
@@ -765,10 +749,8 @@ const VideoPlayer = ({
         setIsMuted(player.muted());
       });
 
-      player.on("timeupdate", () => {
-        setCurrentTime(player.currentTime() || 0);
-        setDuration(player.duration() || 0);
-      });
+      // Time updates are now handled by the PlaybackTimeline sub-component
+      // to prevent full-player re-renders every 250ms which causes lag.
     }
   }, [activeUrl]);
 
@@ -1041,13 +1023,6 @@ const VideoPlayer = ({
     setIsMuted(muted);
   };
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!playerRef.current || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pos = (e.clientX - rect.left) / rect.width;
-    playerRef.current.currentTime(pos * duration);
-  };
-
   const handleRewind = () => {
     if (!playerRef.current) return;
     const curr = playerRef.current.currentTime();
@@ -1057,7 +1032,8 @@ const VideoPlayer = ({
   const handleForward = () => {
     if (!playerRef.current) return;
     const curr = playerRef.current.currentTime();
-    playerRef.current.currentTime(Math.min(duration || curr + 10, curr + 10));
+    const dur = playerRef.current.duration();
+    playerRef.current.currentTime(Math.min(dur || curr + 10, curr + 10));
   };
 
   const toggleFullscreen = () => {
@@ -1181,6 +1157,7 @@ const VideoPlayer = ({
     <div 
       ref={containerRef}
       data-vjs-player 
+      style={{ willChange: "transform, opacity" }}
       className={`relative w-full h-full group select-none overflow-hidden rounded-[1.2rem] border border-white/5 shadow-2xl bg-black ${
         isLocked ? "z-[9995]" : "z-10"
       } ${
@@ -1372,49 +1349,181 @@ const VideoPlayer = ({
 
         {/* Bottom Control Bar */}
         <div className="flex flex-col gap-2 w-full pointer-events-auto">
-          {!isLocked && (
-            <div className="flex items-center justify-between gap-4">
-              {/* Current Playback Time */}
-              <span className="text-[9px] font-black text-white/50 tracking-wider font-mono">{formatTime(currentTime)}</span>
-              
-              {/* Custom Elegant Seek Bar Slider */}
-              <div 
-                onClick={handleSeek}
-                className="flex-1 h-1 bg-white/15 rounded-full cursor-pointer relative overflow-hidden group/seek select-none"
-              >
-                <div 
-                  className="bg-primary h-full rounded-full transition-all"
-                  style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-                />
-              </div>
-
-              {/* Remaining / Total duration */}
-              <span className="text-[9px] font-black text-white/50 tracking-wider font-mono">
-                {duration > 0 ? formatTime(duration) : "LIVE"}
-              </span>
-
-              {/* PiP & Fullscreen Buttons */}
-              <div className="flex items-center gap-1.5">
-                <button 
-                  onClick={handlePiP}
-                  title="Picture in Picture Mode"
-                  className="w-8 h-8 rounded-full border border-white/10 bg-black/40 flex items-center justify-center hover:bg-white/10 text-white/60 hover:text-white transition-all cursor-pointer"
-                >
-                  <Tv size={13} />
-                </button>
-                <button 
-                  onClick={toggleFullscreen}
-                  title="Fullscreen"
-                  className="w-8 h-8 rounded-full border border-white/10 bg-black/40 flex items-center justify-center hover:bg-white/10 text-white/60 hover:text-white transition-all cursor-pointer"
-                >
-                  {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                </button>
-              </div>
-            </div>
+          {!isLocked && playerRef.current && (
+            <PlaybackTimeline 
+              player={playerRef.current} 
+              isFullscreen={isFullscreen}
+              toggleFullscreen={toggleFullscreen}
+              handlePiP={handlePiP}
+            />
           )}
         </div>
       </div>
     </div>
+  );
+};
+
+// Optimized sub-component to handle time updates without re-rendering the whole player
+const PlaybackTimeline = ({ 
+  player, 
+  isFullscreen, 
+  toggleFullscreen, 
+  handlePiP 
+}: { 
+  player: Player, 
+  isFullscreen: boolean, 
+  toggleFullscreen: () => void,
+  handlePiP: () => void
+}) => {
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    if (!player) return;
+    const handleTime = () => {
+      setCurrentTime(player.currentTime() || 0);
+      setDuration(player.duration() || 0);
+    };
+    player.on("timeupdate", handleTime);
+    handleTime(); // Initial sync
+    return () => {
+      player.off("timeupdate", handleTime);
+    };
+  }, [player]);
+
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds) || seconds === Infinity) return "00:00";
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    const parts = [
+      h > 0 ? h : null,
+      m.toString().padStart(2, "0"),
+      s.toString().padStart(2, "0"),
+    ].filter(Boolean);
+    return parts.join(":");
+  };
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    const newTime = pos * (player.duration() || 0);
+    player.currentTime(newTime);
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-[9px] font-black text-white/50 tracking-wider font-mono">{formatTime(currentTime)}</span>
+      
+      <div 
+        onClick={handleSeek}
+        className="flex-1 h-1 bg-white/15 rounded-full cursor-pointer relative overflow-hidden group/seek select-none"
+      >
+        <div 
+          className="bg-primary h-full rounded-full transition-all duration-300 ease-linear"
+          style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+        />
+      </div>
+
+      <span className="text-[9px] font-black text-white/50 tracking-wider font-mono">
+        {duration > 0 ? formatTime(duration) : "LIVE"}
+      </span>
+
+      <div className="flex items-center gap-1.5">
+        <button 
+          onClick={handlePiP}
+          title="Picture in Picture Mode"
+          className="w-8 h-8 rounded-full border border-white/10 bg-black/40 flex items-center justify-center hover:bg-white/10 text-white/60 hover:text-white transition-all cursor-pointer"
+        >
+          <Tv size={13} />
+        </button>
+        <button 
+          onClick={toggleFullscreen}
+          title="Fullscreen"
+          className="w-8 h-8 rounded-full border border-white/10 bg-black/40 flex items-center justify-center hover:bg-white/10 text-white/60 hover:text-white transition-all cursor-pointer"
+        >
+          {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const AdminTrafficNotice = ({ isAdmin }: { isAdmin: boolean }) => {
+  const [onlineUsersCount, setOnlineUsersCount] = useState(1);
+  const [trafficNoticeDismissed, setTrafficNoticeDismissed] = useState(false);
+  
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const fetchCount = async () => {
+      if (document.visibilityState !== 'visible') return;
+      
+      if (sessionStorage.getItem("firestore_quota_exhausted") === "true") {
+        setOnlineUsersCount(prev => Math.max(12, prev + (Math.floor(Math.random() * 5) - 2)));
+        return;
+      }
+      
+      try {
+        const activeThreshold = Date.now() - 180000;
+        const q = query(collection(db, 'live_users'), where('lastActive', '>', activeThreshold));
+        const snap = await getCountFromServer(q);
+        const count = snap.data().count;
+        const estimated = Math.max(1, Math.floor(count * 100)); 
+        setOnlineUsersCount(estimated + (Math.floor(Math.random() * 3) - 1));
+      } catch (e: any) {
+        if (e.code === 'resource-exhausted') {
+          sessionStorage.setItem("firestore_quota_exhausted", "true");
+        }
+        setOnlineUsersCount(prev => Math.max(12, prev + (Math.floor(Math.random() * 3) - 1)));
+      }
+    };
+
+    fetchCount();
+    const countInterval = setInterval(fetchCount, 45000); 
+    return () => clearInterval(countInterval);
+  }, [isAdmin]);
+
+  if (!isAdmin || trafficNoticeDismissed) return null;
+  
+  const isExhausted = sessionStorage.getItem("firestore_quota_exhausted") === "true";
+  if (!isExhausted && onlineUsersCount <= 1000) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div 
+        initial={{ y: 50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 20, opacity: 0 }}
+        className="fixed bottom-20 left-4 right-4 z-[60] bg-red-600 text-white text-[10px] font-bold py-3 px-5 rounded-2xl flex items-center justify-between shadow-2xl backdrop-blur-md"
+      >
+        <div className="flex items-center gap-3">
+          <AlertCircle size={14} className="animate-pulse" />
+          <div className="flex flex-col">
+            <span className="uppercase tracking-widest">Database High Traffic Detected</span>
+            <span className="text-[8px] opacity-60">Admin Notice: {onlineUsersCount} active users. App using offline cache.</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => {
+              sessionStorage.removeItem("firestore_quota_exhausted");
+              localStorage.removeItem("tuhinext_last_sync_time");
+              window.location.reload();
+            }}
+            className="bg-white/10 px-3 py-1 rounded-lg border border-white/20 text-[9px] hover:bg-white/20 transition-colors"
+          >
+            Sync
+          </button>
+          <button 
+            onClick={() => setTrafficNoticeDismissed(true)}
+            className="p-1 hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </motion.div>
+    </AnimatePresence>
   );
 };
 
@@ -1445,7 +1554,60 @@ const getCategoryLogo = (categoryName: string): string => {
   return "https://digitalsynopsis.com/wp-content/uploads/2018/06/fifa-world-cup-logos-usa-mexico-canada-2026.jpg";
 };
 
-const LiveViewerBadge = ({ count }: { count: number }) => {
+const LiveViewerBadge = () => {
+  const [count, setCount] = useState<number>(() => {
+    const currentHour = new Date().getHours();
+    if (currentHour >= 0 && currentHour < 9) {
+      return Math.floor(5500 + Math.random() * 13500);
+    } else {
+      return Math.floor(1400 + Math.random() * 1700);
+    }
+  });
+
+  useEffect(() => {
+    let surgeDirection = 0;
+    let surgeSteps = 0;
+
+    const intervalId = setInterval(() => {
+      setCount(prev => {
+        const currentHour = new Date().getHours();
+        const isLateNight = currentHour >= 0 && currentHour < 9;
+        const minLimit = isLateNight ? 5500 : 1400;
+        const maxLimit = isLateNight ? 19000 : 3100;
+
+        if (prev < minLimit) return prev + Math.floor(40 + Math.random() * 30);
+        if (prev > maxLimit) return prev - Math.floor(40 + Math.random() * 30);
+
+        let delta = 0;
+        if (surgeSteps > 0) {
+          delta = surgeDirection > 0 ? Math.floor(15 + Math.random() * 10) : -Math.floor(10 + Math.random() * 10);
+          surgeSteps--;
+        } else {
+          const roll = Math.random();
+          if (roll < 0.02) {
+            surgeDirection = 1;
+            surgeSteps = 10;
+            delta = Math.floor(15 + Math.random() * 10);
+          } else if (roll < 0.02) {
+            surgeDirection = -1;
+            surgeSteps = 10;
+            delta = -Math.floor(10 + Math.random() * 10);
+          } else {
+            const driftBias = Math.random() > 0.5 ? 1 : -1;
+            delta = Math.floor(-2 + Math.random() * 5) + (Math.random() > 0.7 ? driftBias : 0);
+          }
+        }
+
+        const nextVal = prev + delta;
+        if (nextVal < minLimit) return minLimit + Math.floor(Math.random() * 10);
+        if (nextVal > maxLimit) return maxLimit - Math.floor(Math.random() * 10);
+        return nextVal;
+      });
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   const formatViewerCount = (num: number) => {
     if (num >= 1000) {
       const kValue = num / 1000;
@@ -1482,80 +1644,6 @@ const LiveViewerBadge = ({ count }: { count: number }) => {
 };
 
 export default function App() {
-  const [viewerCount, setViewerCount] = useState<number>(() => {
-    const currentHour = new Date().getHours();
-    // 12:00 AM (0) to 9:00 AM (9) -> within 20,000 (Randomize between 5,500 and 19,000)
-    if (currentHour >= 0 && currentHour < 9) {
-      return Math.floor(5500 + Math.random() * 13500);
-    } else {
-      // 9:00 AM to 11:59 PM -> between 1,500 and 3,000 (Randomize between 1,400 and 3,100)
-      return Math.floor(1400 + Math.random() * 1700);
-    }
-  });
-
-  useEffect(() => {
-    let surgeDirection = 0; // 0 = none, 1 = up, -1 = down
-    let surgeSteps = 0;
-
-    const intervalId = setInterval(() => {
-      setViewerCount(prev => {
-        const currentHour = new Date().getHours();
-        
-        // Define limits based on current time
-        const isLateNight = currentHour >= 0 && currentHour < 9;
-        const minLimit = isLateNight ? 5500 : 1400;
-        const maxLimit = isLateNight ? 19000 : 3100;
-
-        // Transition gracefully if out of bounds (e.g., when the time block shifts)
-        if (prev < minLimit) {
-          return prev + Math.floor(40 + Math.random() * 30);
-        }
-        if (prev > maxLimit) {
-          return prev - Math.floor(40 + Math.random() * 30);
-        }
-
-        let delta = 0;
-
-        // Execute surge steps if active
-        if (surgeSteps > 0) {
-          if (surgeDirection > 0) {
-            // Positive surge: add 15-25 viewers per 3 seconds (adds ~200 viewers over 30s / 10 steps)
-            delta = Math.floor(15 + Math.random() * 10);
-          } else {
-            // Negative surge: drop 10-20 viewers per 3 seconds (drops ~150 viewers over 30s)
-            delta = -Math.floor(10 + Math.random() * 10);
-          }
-          surgeSteps--;
-        } else {
-          // No active surge. Roll for potential new surge or do normal drift
-          const roll = Math.random();
-          if (roll < 0.02) {
-            // Start positive surge (lasts 10 steps = 30 seconds)
-            surgeDirection = 1;
-            surgeSteps = 10;
-            delta = Math.floor(15 + Math.random() * 10);
-          } else if (roll < 0.02) {
-            // Start negative surge (lasts 10 steps = 30 seconds)
-            surgeDirection = -1;
-            surgeSteps = 10;
-            delta = -Math.floor(10 + Math.random() * 10);
-          } else {
-            // Normal slow drift (1 to 4 users change to make 6.6k to 6.5k drop take ~2 minutes)
-            const driftBias = Math.random() > 0.5 ? 1 : -1;
-            delta = Math.floor(-2 + Math.random() * 5) + (Math.random() > 0.7 ? driftBias : 0);
-          }
-        }
-
-        const nextVal = prev + delta;
-        if (nextVal < minLimit) return minLimit + Math.floor(Math.random() * 10);
-        if (nextVal > maxLimit) return maxLimit - Math.floor(Math.random() * 10);
-        return nextVal;
-      });
-    }, 3000);
-
-    return () => clearInterval(intervalId);
-  }, []);
-
   const [channels, setChannels] = useState<Channel[]>(() => {
     try {
       const cached = localStorage.getItem("tuhinext_channels");
@@ -1753,7 +1841,6 @@ export default function App() {
     }
   });
 
-  const [onlineUsersCount, setOnlineUsersCount] = useState(1);
   const SESSION_ID = useMemo(() => Math.random().toString(36).substring(2, 12), []);
   const [appNotice, setAppNotice] = useState("");
   const [downloadTitle, setDownloadTitle] = useState("");
@@ -2308,47 +2395,13 @@ export default function App() {
     const heartbeatInterval = setInterval(updatePresence, 60000); // 1 min heartbeat
 
     const fetchCount = async () => {
-      if (document.visibilityState !== 'visible') return;
-      
-      // CRITICAL QUOTA PROTECTION: Non-admin users do not need to query active user counts from Firestore.
-      // This single optimization saves millions of Firestore daily reads for popular apps!
-      if (!isAdmin) {
-        setOnlineUsersCount(prev => Math.max(12, prev + (Math.floor(Math.random() * 3) - 1)));
-        return;
-      }
-      
-      if (sessionStorage.getItem("firestore_quota_exhausted") === "true") {
-        // Fallback: Simulate active users with jitter
-        setOnlineUsersCount(prev => Math.max(12, prev + (Math.floor(Math.random() * 5) - 2)));
-        return;
-      }
-      
-      try {
-        // Find users active in the last 3 minutes
-        const activeThreshold = Date.now() - 180000;
-        const q = query(collection(db, 'live_users'), where('lastActive', '>', activeThreshold));
-        const snap = await getCountFromServer(q);
-        const count = snap.data().count;
-        
-        // Extrapolate count based on 1% sampling for regular users (multiply by 100)
-        const estimated = Math.max(1, Math.floor(count * 100)); 
-        setOnlineUsersCount(estimated + (Math.floor(Math.random() * 3) - 1));
-      } catch (e: any) {
-        if (e.code === 'resource-exhausted') {
-          sessionStorage.setItem("firestore_quota_exhausted", "true");
-        }
-        setOnlineUsersCount(prev => Math.max(12, prev + (Math.floor(Math.random() * 3) - 1)));
-      }
+      // Logic moved to AdminTrafficNotice
     };
-
-    fetchCount();
-    const countInterval = setInterval(fetchCount, 45000); 
 
     window.addEventListener('beforeunload', removePresence);
 
     return () => {
       clearInterval(heartbeatInterval);
-      clearInterval(countInterval);
       window.removeEventListener('beforeunload', removePresence);
       removePresence();
     };
@@ -2741,6 +2794,7 @@ export default function App() {
     setAdminError(null);
     try {
       const id = `ch-custom-${Date.now()}`;
+      const minOrder = channels.length > 0 ? Math.min(...channels.map(c => c.order ?? 0)) : 0;
       const newChan: Channel = {
         id,
         name: trimmedName,
@@ -2748,13 +2802,13 @@ export default function App() {
         logo: logo.trim() || DEFAULT_CHANNEL_LOGO,
         category: category.trim() || "General",
         isOnline: true,
-        order: channels.length,
+        order: minOrder - 1,
         logoPadding: logoPadding || 0,
       };
 
       setAdminStatus("Updating local state and cache...");
       // Instantly update client state and cache for immediate feedback
-      const updatedChannels = [...channels, newChan];
+      const updatedChannels = [newChan, ...channels];
       setChannels(updatedChannels);
       localStorage.setItem("tuhinext_channels", JSON.stringify(updatedChannels));
       localStorage.setItem("tuhinext_library_synced", "true");
@@ -2809,17 +2863,54 @@ export default function App() {
     }
   };
 
-  const handleMoveChannel = async (channelId: string, direction: 'up' | 'down') => {
+  const handleMoveChannel = async (channelId: string, direction: 'up' | 'down' | 'top' | 'bottom') => {
     const index = channels.findIndex(c => c.id === channelId);
     if (index === -1) return;
+
+    let updatedChannels = [...channels];
+    const currentChannel = { ...channels[index] };
+
+    if (direction === 'top' || direction === 'bottom') {
+      try {
+        setAdminStatus(`Moving to ${direction}...`);
+        
+        let newOrder: number;
+        if (direction === 'top') {
+          const minOrder = channels.length > 0 ? Math.min(...channels.map(c => c.order ?? 0)) : 0;
+          newOrder = minOrder - 1;
+        } else {
+          const maxOrder = channels.length > 0 ? Math.max(...channels.map(c => c.order ?? 0)) : 0;
+          newOrder = maxOrder + 1;
+        }
+
+        const batch = writeBatch(db);
+        batch.update(doc(db, "channels", channelId), { order: newOrder });
+        
+        updatedChannels[index] = { ...currentChannel, order: newOrder };
+        updatedChannels.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+        batch.set(doc(db, "settings", "custom_channels"), { value: JSON.stringify(updatedChannels) }, { merge: true });
+        batch.set(doc(db, "settings", "sync_status"), { version: Date.now() }, { merge: true });
+
+        await batch.commit();
+        setChannels(updatedChannels);
+        localStorage.setItem("tuhinext_channels", JSON.stringify(updatedChannels));
+        
+        setAdminStatus("Position updated successfully!");
+        setTimeout(() => setAdminStatus(null), 2000);
+      } catch (e) {
+        console.error("Move error:", e);
+        setAdminError("Failed to reorder channel.");
+        setTimeout(() => setAdminError(null), 3000);
+      }
+      return;
+    }
 
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     if (newIndex < 0 || newIndex >= channels.length) return;
 
-    const currentChannel = channels[index];
     const targetChannel = channels[newIndex];
-
-    // Ensure all involved channels have an order
+    
     const currentOrder = currentChannel.order ?? index;
     const targetOrder = targetChannel.order ?? newIndex;
 
@@ -2827,7 +2918,6 @@ export default function App() {
       setAdminStatus(`Moving ${direction}...`);
       const batch = writeBatch(db);
       
-      // We swap orders. If target has same order as current (shouldn't happen), we differentiate.
       let finalTargetOrder = currentOrder;
       let finalCurrentOrder = targetOrder;
       
@@ -2838,8 +2928,6 @@ export default function App() {
       batch.update(doc(db, "channels", currentChannel.id), { order: finalCurrentOrder });
       batch.update(doc(db, "channels", targetChannel.id), { order: finalTargetOrder });
       
-      // Update custom_channels list and trigger global sync status in batch
-      const updatedChannels = [...channels];
       updatedChannels[index] = { ...currentChannel, order: finalCurrentOrder };
       updatedChannels[newIndex] = { ...targetChannel, order: finalTargetOrder };
       updatedChannels.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -2848,6 +2936,9 @@ export default function App() {
       batch.set(doc(db, "settings", "sync_status"), { version: Date.now() }, { merge: true });
 
       await batch.commit();
+      setChannels(updatedChannels);
+      localStorage.setItem("tuhinext_channels", JSON.stringify(updatedChannels));
+      
       setAdminStatus("Position updated successfully!");
       setTimeout(() => setAdminStatus(null), 2000);
     } catch (e) {
@@ -3548,6 +3639,7 @@ export default function App() {
     () =>
       channels.filter(
         (channel) =>
+          !channel.isHidden &&
           (channel.name || "").toLowerCase() !== "amar bangla" &&
           ((channel.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
             (channel.category || "General").toLowerCase().includes(searchQuery.toLowerCase())),
@@ -3584,7 +3676,7 @@ export default function App() {
         searchQuery === "" ||
         (channel.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         channelCat.toLowerCase().includes(searchQuery.toLowerCase());
-      const isNotHidden = (channel.name || "").toLowerCase() !== "amar bangla";
+      const isNotHidden = !channel.isHidden && (channel.name || "").toLowerCase() !== "amar bangla";
       return matchesCategory && matchesSearch && isNotHidden;
     });
   }, [channels, selectedCategory, searchQuery]);
@@ -4352,6 +4444,14 @@ export default function App() {
                                           <div className="flex bg-white/5 rounded-lg border border-white/5 mr-1 overflow-hidden">
                                             <button 
                                               disabled={channels.findIndex(c => c.id === ch.id) === 0}
+                                              onClick={() => handleMoveChannel(ch.id, 'top')} 
+                                              title="Move to Top"
+                                              className="p-1 px-1.5 text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:pointer-events-none transition-all border-r border-white/5"
+                                            >
+                                              <ChevronUp size={12} strokeWidth={3} />
+                                            </button>
+                                            <button 
+                                              disabled={channels.findIndex(c => c.id === ch.id) === 0}
                                               onClick={() => handleMoveChannel(ch.id, 'up')} 
                                               className="p-1 px-1.5 text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:pointer-events-none transition-all"
                                             >
@@ -4364,6 +4464,14 @@ export default function App() {
                                               className="p-1 px-1.5 text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:pointer-events-none transition-all"
                                             >
                                               <ChevronDown size={12} />
+                                            </button>
+                                            <button 
+                                              disabled={channels.findIndex(c => c.id === ch.id) === channels.length - 1}
+                                              onClick={() => handleMoveChannel(ch.id, 'bottom')} 
+                                              title="Move to Bottom"
+                                              className="p-1 px-1.5 text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:pointer-events-none transition-all border-l border-white/5"
+                                            >
+                                              <ChevronDown size={12} strokeWidth={3} />
                                             </button>
                                           </div>
                                           <button onClick={() => handleAdminUpdateChannel(ch.id, { isHidden: !ch.isHidden })} className={`p-1.5 rounded-lg transition-colors ${ch.isHidden ? 'text-emerald-400 bg-emerald-400/5' : 'text-amber-400 bg-amber-400/5'}`}>{ch.isHidden ? <Eye size={12} /> : <EyeOff size={12} />}</button>
@@ -4426,7 +4534,7 @@ export default function App() {
                       </div>
 
                       {/* Transparent Live Viewer Badge */}
-                      <LiveViewerBadge count={viewerCount} />
+                      <LiveViewerBadge  />
                     </div>
                   )}
 
@@ -4748,7 +4856,7 @@ export default function App() {
 
                         {/* Computer Screen Live Badge inside Header */}
                         <div className="hidden sm:block">
-                          <LiveViewerBadge count={viewerCount} />
+                          <LiveViewerBadge  />
                         </div>
                       </div>
 
@@ -4814,7 +4922,7 @@ export default function App() {
 
                         {/* Mobile Only Live Badge underneath the Up Next horizontal channels list */}
                         <div className="flex sm:hidden justify-center pt-2">
-                          <LiveViewerBadge count={viewerCount} />
+                          <LiveViewerBadge  />
                         </div>
                       </div>
                     </div>
@@ -5103,43 +5211,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Quota Exhausted Warning Indicator (Admin Only) */}
-      <AnimatePresence>
-        {isAdmin && (sessionStorage.getItem("firestore_quota_exhausted") === "true" || onlineUsersCount > 1000) && !trafficNoticeDismissed && (
-          <motion.div 
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 20, opacity: 0 }}
-            className="fixed bottom-20 left-4 right-4 z-[60] bg-red-600 text-white text-[10px] font-bold py-3 px-5 rounded-2xl flex items-center justify-between shadow-2xl backdrop-blur-md"
-          >
-            <div className="flex items-center gap-3">
-              <AlertCircle size={14} className="animate-pulse" />
-              <div className="flex flex-col">
-                <span className="uppercase tracking-widest">Database High Traffic Detected</span>
-                <span className="text-[8px] opacity-60">Admin Notice: {onlineUsersCount} active users. App using offline cache.</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => {
-                  sessionStorage.removeItem("firestore_quota_exhausted");
-                  localStorage.removeItem("tuhinext_last_sync_time");
-                  window.location.reload();
-                }}
-                className="bg-white/10 px-3 py-1 rounded-lg border border-white/20 text-[9px] hover:bg-white/20 transition-colors"
-              >
-                Sync
-              </button>
-              <button 
-                onClick={() => setTrafficNoticeDismissed(true)}
-                className="p-1 hover:bg-white/10 rounded-lg transition-colors"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Admin Traffic Notice (Moved to separate component) */}
+      <AdminTrafficNotice isAdmin={isAdmin} />
     </div>
   );
 }
